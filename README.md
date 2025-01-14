@@ -9,12 +9,10 @@ The project is organized as follows:
 /
 ├── classic/
 │   ├── README.md  # Description and instructions for the classical simulation
-│   ├── pm_simulation.py  # Classical prepare-and-measure simulation
-│   └── teleportation_simulation.py  # Classical simulation of teleportation
+│   └── pm_simulation.py  # Classical prepare-and-measure simulation
 ├── quantum/
 │   ├── README.md  # Description and instructions for the quantum simulation
-│   ├── pm_quantum.qasm  # Qiskit/OpenQASM implementation of PM protocol
-│   └── teleportation_quantum.qasm  # Quantum circuit for teleportation
+│   └── pm_quantum.qasm  # Qiskit/OpenQASM implementation of PM protocol
 └── README.md  # Project overview and setup instructions (this file)
 ```
 
