@@ -1,0 +1,9 @@
+qiskit
+matplotlib
+qiskit_ibm_runtime
+qiskit_ibm_provider
+pylatexenc
+qiskit-aer
+qiskit-aer-gpu
+qutip
+povm-toolbox

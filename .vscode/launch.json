@@ -1,0 +1,23 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+            "name": "State + on SIC POVM",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "quantum/main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--backend-type", "aer_simulator",
+                "--noise-model", "zero_noise",
+                "--state", "+",
+                "--povm", "sic",
+                "--shots", "1000",
+            ]
+        }
+    ]
+}
