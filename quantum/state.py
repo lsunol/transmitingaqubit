@@ -80,7 +80,6 @@ class Zero(State):
         # |0⟩ state: theta=0 (north pole), phi=0
         return (0.0, 0.0)
 
-
 class One(State):
     """State |1⟩."""
     
@@ -98,7 +97,6 @@ class One(State):
         # |1⟩ state: theta=180 (south pole), phi=0
         return (180.0, 0.0)
 
-
 class Plus(State):
     """State |+⟩ = (|0⟩ + |1⟩)/√2."""
     
@@ -115,7 +113,6 @@ class Plus(State):
     def get_bloch_angles(self):
         # |+⟩ state: theta=90, phi=0 (positive X direction)
         return (90.0, 0.0)
-
 
 class Minus(State):
     """State |-⟩ = (|0⟩ - |1⟩)/√2."""
@@ -135,7 +132,6 @@ class Minus(State):
         # |-⟩ state: theta=90, phi=180 (negative X direction)
         return (90.0, 180.0)
 
-
 class PlusI(State):
     """State |i⟩ = (|0⟩ + i|1⟩)/√2."""
     
@@ -154,7 +150,6 @@ class PlusI(State):
         # |i⟩ state: theta=90, phi=90 (positive Y direction)
         return (90.0, 90.0)
 
-
 class MinusI(State):
     """State |-i⟩ = (|0⟩ - i|1⟩)/√2."""
     
@@ -172,7 +167,6 @@ class MinusI(State):
     def get_bloch_angles(self):
         # |-i⟩ state: theta=90, phi=270 (negative Y direction)
         return (90.0, 270.0)
-
 
 class Custom(State):
     """
@@ -217,7 +211,6 @@ class Custom(State):
         theta_deg = np.rad2deg(self.theta)
         phi_deg = np.rad2deg(self.phi)
         return (theta_deg, phi_deg)
-
 
 class CustomStatevector(State):
     """
@@ -276,9 +269,10 @@ def create_state(state_name, custom_params=None):
     
     Args:
         state_name (str): Name of the state ('0', '1', '+', '-', 'i', '-i', or 'custom')
-        custom_params (dict, optional): Parameters for custom states
+        custom_params (dict or str, optional): Parameters for custom states
             For 'custom' with angles: {'theta': float, 'phi': float}
             For 'custom' with statevector: {'alpha': complex, 'beta': complex}
+            For 'custom' with string: "real,imag real,imag" format
             
     Returns:
         State: An instance of a State subclass
@@ -302,7 +296,11 @@ def create_state(state_name, custom_params=None):
         if custom_params is None:
             raise ValueError("Custom state requires parameters")
         
-        # Two ways to create custom states
+        # Handle string input from command line
+        if isinstance(custom_params, str):
+            custom_params = validate_custom_state(custom_params)
+        
+        # Three ways to create custom states
         if 'theta' in custom_params and 'phi' in custom_params:
             return Custom(custom_params['theta'], custom_params['phi'])
         elif 'alpha' in custom_params and 'beta' in custom_params:
@@ -311,3 +309,72 @@ def create_state(state_name, custom_params=None):
             raise ValueError("Invalid custom state parameters")
     else:
         raise ValueError(f"Unknown state: {state_name}")
+
+def validate_custom_state(custom_state_str):
+    """
+    Validate and parse a custom state string from command line arguments.
+    
+    Args:
+        custom_state_str (str): String in format "real,imag real,imag" 
+                               representing alpha and beta components
+    
+    Returns:
+        dict: Dictionary with 'alpha' and 'beta' complex values ready for CustomStatevector
+        
+    Raises:
+        ValueError: If the string format is invalid or state vector is zero
+        
+    Example:
+        >>> validate_custom_state("0.707,0 0.707,0")
+        {'alpha': (0.707+0j), 'beta': (0.707+0j)}
+    """
+    try:
+        parts = custom_state_str.split()
+        if len(parts) != 2:
+            raise ValueError("Custom state must have exactly two parts (alpha and beta)")
+        
+        alpha_parts = parts[0].split(',')
+        beta_parts = parts[1].split(',')
+        
+        if len(alpha_parts) != 2 or len(beta_parts) != 2:
+            raise ValueError("Each amplitude must have real and imaginary parts separated by comma")
+        
+        alpha = complex(float(alpha_parts[0]), float(alpha_parts[1]))
+        beta = complex(float(beta_parts[0]), float(beta_parts[1]))
+        
+        # Check if state vector is zero
+        norm = np.sqrt(abs(alpha)**2 + abs(beta)**2)
+        if norm == 0:
+            raise ValueError("State vector cannot be zero")
+        
+        # Return the complex amplitudes (normalization will be done by CustomStatevector)
+        return {'alpha': alpha, 'beta': beta}
+        
+    except Exception as e:
+        raise ValueError(f"Invalid custom state format: {e}")
+
+def create_state_from_args(state_name, custom_state_str=None):
+    """
+    Create a state from command line arguments with built-in validation.
+    
+    This function handles the logic for custom state creation including validation,
+    making the main function cleaner by encapsulating all state creation logic here.
+    
+    Args:
+        state_name (str): Name of the state ('0', '1', '+', '-', 'i', '-i', or 'custom')
+        custom_state_str (str, optional): Custom state string in "real,imag real,imag" format
+                                        (required only when state_name='custom')
+    
+    Returns:
+        State: An instance of a State subclass
+    
+    Raises:
+        ValueError: If state_name is invalid, custom_state_str is missing for custom states,
+                   or if custom state format is invalid
+    """
+    if state_name == 'custom':
+        if custom_state_str is None:
+            raise ValueError("Custom state string is required when state='custom'")
+        return create_state(state_name, custom_state_str)
+    else:
+        return create_state(state_name)

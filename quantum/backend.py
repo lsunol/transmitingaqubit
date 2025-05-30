@@ -23,7 +23,6 @@ class Backend(ABC):
         self._backend = None
         self._sampler = None
         
-    @abstractmethod
     def get_backend(self):
         """
         Return the underlying quantum backend.
@@ -31,15 +30,25 @@ class Backend(ABC):
         Returns:
             Backend: The quantum backend instance.
         """
-        pass
+        return self._backend
     
-    @abstractmethod
     def get_sampler(self):
         """
         Return a sampler configured for this backend.
         
         Returns:
             Sampler: The sampler instance configured for this backend.
+        """
+        return self._sampler
+    
+    @abstractmethod
+    def provides_immediate_results(self):
+        """
+        Check if this backend provides immediate results or queued/delayed results.
+        
+        Returns:
+            bool: True if results are available immediately after job submission,
+                  False if jobs are queued and results must be collected later.
         """
         pass
     
@@ -55,9 +64,20 @@ class QPUBackend(Backend):
     This backend connects to real quantum hardware through IBM Quantum services.
     """
     
-    def __init__(self):
-        """Initialize a QPU backend."""
-        super().__init__(label="QPU Backend")
+    def __init__(self, backend_name="least_busy"):
+        """
+        Initialize a QPU backend.
+        
+        Args:
+            backend_name (str): Name of the specific backend to use, or "least_busy" 
+                               to automatically select the least busy available QPU.
+                               Default is "least_busy".
+        """
+        self.backend_name = backend_name
+        if backend_name == "least_busy":
+            super().__init__(label="QPU Backend (Least Busy)")
+        else:
+            super().__init__(label=f"QPU Backend ({backend_name})")
         self._initialize_backend()
         
     def _initialize_backend(self):
@@ -65,20 +85,25 @@ class QPUBackend(Backend):
         # Define the service
         service = QiskitRuntimeService()
         
-        # Get a backend (least busy real quantum processor)
-        self._backend = service.least_busy(operational=True, simulator=False)
-        print(f"Backend selected: {self._backend}")
+        # Get the backend based on the backend_name parameter
+        if self.backend_name == "least_busy":
+            # Get the least busy real quantum processor
+            self._backend = service.least_busy(operational=True, simulator=False)
+            print(f"Least busy backend selected: {self._backend}")
+        else:
+            # Get the specific backend by name
+            try:
+                self._backend = service.backend(self.backend_name)
+                print(f"Specific backend selected: {self._backend}")
+            except Exception as e:
+                raise RuntimeError(f"Failed to get backend '{self.backend_name}': {e}")
         
         # Define the sampler
         self._sampler = Sampler(mode=self._backend)
     
-    def get_backend(self):
-        """Return the QPU backend."""
-        return self._backend
-    
-    def get_sampler(self):
-        """Return the QPU sampler."""
-        return self._sampler
+    def provides_immediate_results(self):
+        """QPU backends provide delayed results (jobs are queued)."""
+        return False
 
 
 class FakeBackend(Backend):
@@ -111,13 +136,9 @@ class FakeBackend(Backend):
         # Define Sampler
         self._sampler = Sampler(mode=self._backend, options=options)
     
-    def get_backend(self):
-        """Return the fake backend."""
-        return self._backend
-    
-    def get_sampler(self):
-        """Return the fake backend sampler."""
-        return self._sampler
+    def provides_immediate_results(self):
+        """Fake backends provide immediate results (local simulation)."""
+        return True
 
 
 class AerSimulatorBackend(Backend):
@@ -141,18 +162,9 @@ class AerSimulatorBackend(Backend):
         # but rather the backend directly with execute() or the legacy sampler
         # self._sampler = None  # Will be handled differently for Aer
 
-    def get_backend(self):
-        """Return the Aer simulator backend."""
-        return self._backend
-    
-    def get_sampler(self):
-        """
-        Return the Aer simulator sampler.
-        
-        Note: AerSimulator typically doesn't use the runtime Sampler.
-        This method returns None to indicate that direct backend usage is preferred.
-        """
-        return self._sampler
+    def provides_immediate_results(self):
+        """Aer simulator backends provide immediate results (local simulation)."""
+        return True
 
 
 def create_backend(backend_type="aer_simulator", **kwargs):
@@ -165,6 +177,10 @@ def create_backend(backend_type="aer_simulator", **kwargs):
                            - "fake_backend": Fake backend with noise model
                            - "aer_simulator": Aer simulator backend
         **kwargs: Additional arguments passed to the specific backend constructor.
+                 For "qpu" backend_type:
+                 - backend_name (str): Specific backend name or "least_busy" (default: "least_busy")
+                 For "fake_backend" backend_type:
+                 - seed_simulator (int): Seed for reproducible results (default: 42)
     
     Returns:
         Backend: An instance of the requested backend type.
@@ -183,57 +199,3 @@ def create_backend(backend_type="aer_simulator", **kwargs):
     else:
         valid_types = ["qpu", "fake_backend", "aer_simulator"]
         raise ValueError(f"Invalid backend type '{backend_type}'. Must be one of {valid_types}")
-
-
-# Simple example of usage
-def main():
-    """Run a simple demonstration of backend implementations."""
-    
-    print("Creating different quantum backends...\n")
-    
-    # Test Aer Simulator Backend
-    print("1. Aer Simulator Backend:")
-    try:
-        backend = create_backend("aer_simulator")
-        print(f"   Created: {backend}")
-        print(f"   Backend type: {type(backend.get_backend()).__name__}")
-        print(f"   Sampler: {backend.get_sampler()}")
-    except Exception as e:
-        print(f"   Error: {e}")
-    
-    print()
-    
-    # Test Fake Backend
-    print("2. Fake Backend:")
-    try:
-        backend = create_backend("fake_backend", seed_simulator=123)
-        print(f"   Created: {backend}")
-        print(f"   Backend type: {type(backend.get_backend()).__name__}")
-        print(f"   Has sampler: {backend.get_sampler() is not None}")
-    except Exception as e:
-        print(f"   Error: {e}")
-    
-    print()
-    
-    # Test QPU Backend (this might fail if not properly authenticated)
-    print("3. QPU Backend:")
-    try:
-        backend = create_backend("qpu")
-        print(f"   Created: {backend}")
-        print(f"   Backend type: {type(backend.get_backend()).__name__}")
-        print(f"   Has sampler: {backend.get_sampler() is not None}")
-    except Exception as e:
-        print(f"   Error (expected if not authenticated): {e}")
-    
-    print()
-    
-    # Test invalid backend type
-    print("4. Invalid Backend Type:")
-    try:
-        backend = create_backend("invalid_type")
-    except ValueError as e:
-        print(f"   Correctly caught error: {e}")
-
-
-if __name__ == "__main__":
-    main()
