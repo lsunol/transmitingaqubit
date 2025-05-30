@@ -10,6 +10,8 @@ from qiskit.circuit.library import UnitaryGate
 import qiskit.quantum_info as qi
 import math
 from scipy.linalg import qr
+import qutip as qt
+import os
 
 
 class POVM(ABC):
@@ -196,6 +198,37 @@ class POVM(ABC):
 
         return np.sum(P_array * np.log(P_array / Q_array))
 
+    def generate_image(self, output_dir):
+        """
+        Generate and save a PNG image of the POVM operators on a Bloch sphere using QuTiP.
+        
+        Args:
+            output_dir (str): Directory path where the PNG will be saved
+        
+        Returns:
+            str: Full path to the saved PNG file
+        """
+        # Create output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Create the full file path with fixed filename
+        output_path = os.path.join(output_dir, "povm.png")
+        
+        # Create Bloch sphere and add the POVM operators
+        bloch = qt.Bloch()
+        operators = self.get_operators()
+        
+        # Check if operators are available
+        if operators is not None:
+            # Convert each POVM operator to QuTiP quantum object and add to Bloch sphere
+            for operator in operators:
+                # Convert operator to QuTiP quantum object
+                qutip_operator = qt.Qobj(operator)
+                bloch.add_states(qutip_operator)
+          # Save as PNG
+        bloch.save(output_path)
+        return output_path
+
 class BB84POVM(POVM):
     """
     BB84 POVM implementation.
@@ -346,17 +379,8 @@ class SICPOVM(POVM):
         factor = 1/4
         
         for vec in self.vectors:
-            # Convert Bloch vector to density matrix: (I + r·σ)/2
-            x, y, z = vec
-            
-            # Pauli matrices
-            sigma_x = np.array([[0, 1], [1, 0]])
-            sigma_y = np.array([[0, -1j], [1j, 0]])
-            sigma_z = np.array([[1, 0], [0, -1]])
-            
-            # Calculate the projector: (I + r·σ)/2
-            projector = np.eye(2) + x * sigma_x + y * sigma_y + z * sigma_z
-            projector = projector / 2
+            # Convert state vector to projector: |ψ⟩⟨ψ|
+            projector = vec @ vec.conj().T
             
             # Scale by factor for POVM
             operator = factor * projector
