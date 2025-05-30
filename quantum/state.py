@@ -8,6 +8,8 @@ import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
 import math
+import qutip as qt
+import os
 
 
 class State(ABC):
@@ -54,10 +56,38 @@ class State(ABC):
         Returns:
             tuple: (theta_deg, phi_deg) where:
                    - theta_deg: polar angle in degrees [0, 180]
-                   - phi_deg: azimuthal angle in degrees [0, 360)
-        """
+                   - phi_deg: azimuthal angle in degrees [0, 360)        """
         pass
     
+    def generate_image(self, output_dir):
+        """
+        Generate and save a PNG image of the quantum state on a Bloch sphere using QuTiP.
+        
+        Args:
+            output_dir (str): Directory path where the PNG will be saved
+        
+        Returns:
+            str: Full path to the saved PNG file
+        """
+        # Create output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Create the full file path with fixed filename
+        output_path = os.path.join(output_dir, "original-qubit-state.png")
+        
+        # Create Bloch sphere and add the state
+        bloch = qt.Bloch()
+        statevector = self.get_statevector()
+        
+        # Convert statevector to QuTiP quantum object and add to Bloch sphere
+        qutip_state = qt.Qobj(statevector)
+        bloch.add_states(qutip_state)
+        
+        # Save as PNG
+        bloch.save(output_path)
+        
+        return output_path
+
     def __str__(self):
         """String representation of the state."""
         return self.label if self.label else "Unnamed state"

@@ -205,6 +205,8 @@ def main():
         'shots': args.shots
     }
     csv_manager, experiment_folder = add_experiment_to_master_csv(initial_job_data)
+
+    state.generate_image(experiment_folder)
     
     # Initialize results processor
     results_processor = QuantumResultsProcessor(csv_manager)
