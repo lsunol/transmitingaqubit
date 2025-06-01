@@ -7,6 +7,11 @@ between main.py and collect_results.py.
 """
 
 from typing import Dict, List, Any
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
+import matplotlib.pyplot as plt
+import numpy as np
+import os
 from state import create_state_from_args
 from povm import create_povm
 from csv_manager import ExperimentCSVManager
@@ -23,6 +28,92 @@ class QuantumResultsProcessor:
             csv_manager (ExperimentCSVManager): CSV manager instance
         """
         self.csv_manager = csv_manager
+    
+    def plot_kl_divergence_analysis(self, kl_analysis: List[Dict], job_id: str, output_dir: str) -> str:
+        """
+        Plot KL divergence analysis and save as PNG.
+        
+        Args:
+            kl_analysis (list): List of dicts with 'shots' and 'kl_divergence' keys
+            job_id (str): Job ID for the plot title
+            output_dir (str): Output directory to save the plot
+            
+        Returns:
+            str: Path to saved plot file
+        """
+        if not kl_analysis or len(kl_analysis) == 0:
+            print(f"  Warning: No KL analysis data to plot for job {job_id}")
+            return ""
+        
+        # Extract shots and KL divergence values
+        shots = np.array([entry['shots'] for entry in kl_analysis])
+        kl_values = np.array([entry['kl_divergence'] for entry in kl_analysis])
+        # Create the plot
+        plt.ioff()  # Turn off interactive mode
+        fig = plt.figure(figsize=(12, 8))
+        
+        # Main plot
+        plt.subplot(2, 2, 1)
+        scatter = plt.scatter(shots, kl_values, alpha=0.7, s=30, c=kl_values, cmap='viridis', edgecolors='none')
+        plt.plot(shots, kl_values, 'b-', alpha=0.5, linewidth=1)
+        plt.xlabel('Number of Shots', fontweight='bold')
+        plt.ylabel('KL Divergence Value', fontweight='bold')
+        plt.title(f'KL Divergence vs Number of Shots', fontweight='bold')
+        plt.grid(True, alpha=0.3)
+        plt.colorbar(scatter, label='KL Divergence Value')
+        
+        # Log scale plot
+        plt.subplot(2, 2, 2)
+        plt.scatter(shots, kl_values, alpha=0.7, s=20, color='green')
+        plt.xlabel('Number of Shots', fontweight='bold')
+        plt.ylabel('KL Divergence (log scale)', fontweight='bold')
+        plt.title('KL Divergence (Log Scale)', fontweight='bold')
+        plt.yscale('log')
+        plt.grid(True, alpha=0.3)
+        
+        # Histogram of KL divergence values
+        plt.subplot(2, 2, 3)
+        n_bins = min(30, len(kl_values) // 5) if len(kl_values) > 10 else 10
+        plt.hist(kl_values, bins=n_bins, color='orange', alpha=0.7, edgecolor='black', linewidth=0.5)
+        plt.xlabel('KL Divergence Value', fontweight='bold')
+        plt.ylabel('Frequency', fontweight='bold')
+        plt.title('Distribution of KL Divergence Values', fontweight='bold')
+        plt.grid(True, alpha=0.3)
+        
+        # Convergence trend (moving average if enough data points)
+        plt.subplot(2, 2, 4)
+        plt.plot(shots, kl_values, 'b-', alpha=0.6, linewidth=1, label='KL Divergence')
+        
+        # Add moving average if we have enough points
+        if len(kl_values) > 20:
+            window_size = min(50, len(kl_values) // 10)
+            if window_size > 1:
+                moving_avg = np.convolve(kl_values, np.ones(window_size)/window_size, mode='valid')
+                avg_shots = shots[window_size-1:]
+                plt.plot(avg_shots, moving_avg, 'red', linewidth=2, alpha=0.8, 
+                        label=f'Moving Average (window={window_size})')
+        
+        plt.xlabel('Number of Shots', fontweight='bold')
+        plt.ylabel('KL Divergence', fontweight='bold')
+        plt.title('Convergence Trend', fontweight='bold')
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+        
+        # Overall figure title
+        plt.suptitle(f'KL Divergence Analysis - Job {job_id}', fontsize=14, fontweight='bold')
+        
+        # Adjust layout
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.93)
+        
+        # Save the plot
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, "kl_divergence_analysis.png")
+        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close()  # Close to free memory
+        
+        print(f"  ✓ KL divergence plot saved: {output_path}")
+        return output_path
     
     def process_job_results(self, job, job_data: Dict[str, str]) -> bool:
         """
@@ -53,6 +144,10 @@ class QuantumResultsProcessor:
             # Calculate KL divergence
             kl_analysis = povm.calculate_kl_divergence(experimental_results, state)
             print(f"  KL Divergence calculated: {len(kl_analysis)} data points")
+            
+            # Plot KL divergence analysis
+            output_dir = f"quantum/output/experiment_{job_id}"
+            self.plot_kl_divergence_analysis(kl_analysis, job_id, output_dir)
             
             # Get POVM labels
             povm_labels = str(list(povm.get_outcome_label_map().values()))
