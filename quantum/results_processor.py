@@ -114,7 +114,7 @@ class QuantumResultsProcessor:
         
         print(f"  ✓ KL divergence plot saved: {output_path}")
         return output_path
-    
+
     def process_job_results(self, job, job_data: Dict[str, str]) -> bool:
         """
         Process completed job results including KL divergence calculation and CSV updates.
@@ -145,12 +145,15 @@ class QuantumResultsProcessor:
             kl_analysis = povm.calculate_kl_divergence(experimental_results, state)
             print(f"  KL Divergence calculated: {len(kl_analysis)} data points")
             
-            # Plot KL divergence analysis
+            # Set output directory for plots
             output_dir = f"quantum/output/experiment_{job_id}"
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Plot KL divergence analysis
             self.plot_kl_divergence_analysis(kl_analysis, job_id, output_dir)
             
-            # Get POVM labels
-            povm_labels = str(list(povm.get_outcome_label_map().values()))
+            # Plot POVM outcome distribution
+            outcome_map = povm_labels = str(list(povm.get_outcome_label_map().values()))
             
             # Create updated job data
             updated_job_data = self._create_updated_job_data(
