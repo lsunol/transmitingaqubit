@@ -261,6 +261,10 @@ class POVM(ABC):
         bloch.save(output_path)
         return output_path
 
+    def get_label(self):
+        """Return the label of the POVM."""
+        return self.label
+
 class BB84POVM(POVM):
     """
     BB84 POVM implementation.

@@ -116,30 +116,30 @@ class QuantumResultsProcessor:
         print(f"  ✓ KL divergence plot saved: {output_path}")
         return output_path
 
-    def plot_povm_outcome_distribution_histogram(self, counts: dict, job_id: str, output_dir: str, povm=None) -> str:
+    def plot_povm_outcome_distribution_histogram(self, counts: dict, output_dir: str, povm, state) -> str:
         """
         Plot POVM outcome distribution using Qiskit's plot_histogram, with bitstring and label.
         
         Args:
             counts (dict): Dictionary of outcome bitstrings to counts
-            job_id (str): Job ID for the plot title
+            job_id (str): (unused, kept for compatibility)
             output_dir (str): Output directory to save the plot
-            povm: POVM object with get_outcome_label_map() (optional, for labeling)
+            povm: POVM object with get_outcome_label_map() and get_label()
+            state: State object for labeling
             
         Returns:
             str: Path to saved plot file
         """
-        # If povm is provided, relabel the keys
-        if povm is not None:
-            label_map = povm.get_outcome_label_map()  # Should map bitstrings to labels
-            new_counts = {}
-            for bitstring, count in counts.items():
-                # Use the bitstring directly as key (not int conversion)
-                label = label_map.get(bitstring, bitstring)
-                new_key = f"{bitstring} ({label})"
-                new_counts[new_key] = count
-            counts = new_counts
-        label = f'POVM Outcome Distribution - Job {job_id}'
+        label_map = povm.get_outcome_label_map()
+        new_counts = {}
+        for bitstring, count in counts.items():
+            label = label_map.get(bitstring, bitstring)
+            new_key = f"{bitstring} ({label})"
+            new_counts[new_key] = count
+        counts = new_counts
+        state_label = str(state)
+        povm_label = povm.get_label()
+        label = f'{povm_label} Outcome Distribution \nfor state: {state_label}'
         fig = plot_histogram(counts, title=label, bar_labels=True)
         os.makedirs(output_dir, exist_ok=True)
         output_path = os.path.join(output_dir, "povm_outcome_experimental_distribution_histogram.png")
@@ -147,7 +147,7 @@ class QuantumResultsProcessor:
         print(f"  ✓ POVM outcome distribution plot saved: {output_path}")
         return output_path
 
-    def plot_povm_distribution_pie(self, distribution: dict, job_id: str, output_dir: str, filename_suffix: str, povm=None) -> str:
+    def plot_povm_distribution_pie(self, distribution: dict, job_id: str, output_dir: str, filename_suffix: str, povm=None, state=None) -> str:
         """
         Plot POVM outcome distribution as a pie chart, with bitstring and label.
         Args:
@@ -156,6 +156,7 @@ class QuantumResultsProcessor:
             output_dir (str): Output directory to save the plot
             filename_suffix (str): Suffix for the output filename (e.g., 'experimental', 'theoretical')
             povm: POVM object with get_outcome_label_map() (optional, for labeling)
+            state: State object, used to extract label or angles for the title (must not be None)
         Returns:
             str: Path to saved plot file
         """
@@ -172,8 +173,11 @@ class QuantumResultsProcessor:
         values = list(distribution.values())
         plt.ioff()
         fig, ax = plt.subplots(figsize=(8, 8))
+        # Compose state and POVM label for title
+        state_label = str(state)
+        povm_label = povm.get_label()
         ax.pie(values, labels=labels, autopct='%1.1f%%', startangle=90, textprops={'fontsize': 12})
-        ax.set_title(f'POVM Outcome Distribution (Pie, {filename_suffix.capitalize()}) - Job {job_id}', fontweight='bold')
+        ax.set_title(f'{povm_label} Outcome Distribution ({filename_suffix.capitalize()})\nfor state: {state_label}', fontweight='bold')
         plt.tight_layout()
         os.makedirs(output_dir, exist_ok=True)
         output_path = os.path.join(output_dir, f"povm_outcome_{filename_suffix}_distribution_pie.png")
@@ -219,12 +223,12 @@ class QuantumResultsProcessor:
             # Plot KL divergence analysis
             self.plot_kl_divergence_analysis(kl_analysis, job_id, output_dir)
             # Plot POVM outcome distribution using Qiskit's histogram, with labels
-            self.plot_povm_outcome_distribution_histogram(counts, job_id, output_dir, povm=povm)
+            self.plot_povm_outcome_distribution_histogram(counts, output_dir, povm, state)
             # Plot POVM outcome distribution as pie chart, with labels (experimental)
-            self.plot_povm_distribution_pie(counts, job_id, output_dir, "experimental", povm=povm)
+            self.plot_povm_distribution_pie(counts, job_id, output_dir, "experimental", povm=povm, state=state)
             # Plot POVM theoretical distribution as pie chart, with labels
             theoretical_probs = povm.get_theoretical_distribution(state)
-            self.plot_povm_distribution_pie(theoretical_probs, job_id, output_dir, "theoretical", povm=povm)
+            self.plot_povm_distribution_pie(theoretical_probs, job_id, output_dir, "theoretical", povm=povm, state=state)
             
             # Plot POVM outcome distribution
             outcome_map = povm_labels = str(list(povm.get_outcome_label_map().values()))
