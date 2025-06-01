@@ -7,6 +7,7 @@ between main.py and collect_results.py.
 """
 
 from typing import Dict, List, Any
+from qiskit.visualization import plot_histogram
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
@@ -115,6 +116,37 @@ class QuantumResultsProcessor:
         print(f"  ✓ KL divergence plot saved: {output_path}")
         return output_path
 
+    def plot_povm_outcome_distribution(self, counts: dict, job_id: str, output_dir: str, povm=None) -> str:
+        """
+        Plot POVM outcome distribution using Qiskit's plot_histogram, with bitstring and label.
+        
+        Args:
+            counts (dict): Dictionary of outcome bitstrings to counts
+            job_id (str): Job ID for the plot title
+            output_dir (str): Output directory to save the plot
+            povm: POVM object with get_outcome_label_map() (optional, for labeling)
+            
+        Returns:
+            str: Path to saved plot file
+        """
+        # If povm is provided, relabel the keys
+        if povm is not None:
+            label_map = povm.get_outcome_label_map()  # Should map bitstrings to labels
+            new_counts = {}
+            for bitstring, count in counts.items():
+                # Use the bitstring directly as key (not int conversion)
+                label = label_map.get(bitstring, bitstring)
+                new_key = f"{bitstring} ({label})"
+                new_counts[new_key] = count
+            counts = new_counts
+        label = f'POVM Outcome Distribution - Job {job_id}'
+        fig = plot_histogram(counts, title=label, bar_labels=True)
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, "povm_outcome_experimental_distribution.png")
+        fig.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
+        print(f"  ✓ POVM outcome distribution plot saved: {output_path}")
+        return output_path
+
     def process_job_results(self, job, job_data: Dict[str, str]) -> bool:
         """
         Process completed job results including KL divergence calculation and CSV updates.
@@ -151,6 +183,8 @@ class QuantumResultsProcessor:
             
             # Plot KL divergence analysis
             self.plot_kl_divergence_analysis(kl_analysis, job_id, output_dir)
+            # Plot POVM outcome distribution using Qiskit histogram, with labels
+            self.plot_povm_outcome_distribution(counts, job_id, output_dir, povm=povm)
             
             # Plot POVM outcome distribution
             outcome_map = povm_labels = str(list(povm.get_outcome_label_map().values()))
