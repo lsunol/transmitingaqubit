@@ -220,11 +220,43 @@ class POVM(ABC):
         
         # Check if operators are available
         if operators is not None:
-            # Convert each POVM operator to QuTiP quantum object and add to Bloch sphere
-            for operator in operators:
-                # Convert operator to QuTiP quantum object
-                qutip_operator = qt.Qobj(operator)
-                bloch.add_states(qutip_operator)
+            # Get operator labels from the outcome label map
+            outcome_map = self.get_outcome_label_map()
+            if outcome_map is not None:
+                operator_labels = list(outcome_map.values())
+            else:
+                # Fallback to generic labels if no outcome map
+                operator_labels = [f"M{i}" for i in range(len(operators))]
+            
+            # Calculate Bloch vectors for each operator
+            bloch_vectors = []
+            colors = ['red', 'blue', 'green', 'orange', 'purple', 'brown']
+            
+            for i, operator in enumerate(operators):
+                # Calculate Bloch vector components for qubit operators
+                if operator.shape == (2, 2):  # Only for qubit operators
+                    # Pauli matrices as numpy arrays
+                    sigma_x = np.array([[0, 1], [1, 0]], dtype=complex)
+                    sigma_y = np.array([[0, -1j], [1j, 0]], dtype=complex)
+                    sigma_z = np.array([[1, 0], [0, -1]], dtype=complex)
+                    
+                    # Calculate Bloch vector components using trace
+                    x = np.trace(operator @ sigma_x).real
+                    y = np.trace(operator @ sigma_y).real  
+                    z = np.trace(operator @ sigma_z).real
+                    
+                    bloch_vectors.append([x, y, z])
+            
+            # Add vectors to Bloch sphere with different colors
+            if bloch_vectors:
+                for i, vec in enumerate(bloch_vectors):
+                    color = colors[i % len(colors)]
+                    bloch.add_vectors([vec], [color])
+                    
+                    # Add annotations at the end of each vector
+                    if i < len(operator_labels):
+                        label = operator_labels[i]
+                        bloch.add_annotation(vec, label, color=color, fontsize=12, ha='center', va='center')
           # Save as PNG
         bloch.save(output_path)
         return output_path
