@@ -5,7 +5,7 @@ import csv
 import os
 from datetime import datetime
         
-from qiskit import QuantumCircuit, transpile        
+from qiskit import transpile        
 from state import create_state_from_args
 from backend import create_backend
 from povm import create_povm
@@ -22,16 +22,17 @@ def parse_arguments():
     # QPU or simulator selection
     qpu_group = parser.add_argument_group('QPU or Simulator Options')
     qpu_group.add_argument('--backend-type', type=str, choices=['qpu', 'fake_backend', 'aer_simulator'], required=True, help='QPU backend name or "simulator"')
-    qpu_group.add_argument('--backend-name', type=str, required=False, 
+    qpu_group.add_argument('--backend-name', type=str, required=False, default="least_busy",
                            choices=['least_busy', 'aachen', 'kingston', 'marrakesh', 'fez', 'torino', 'sherbrooke', 'quebec', 'brisbane', 'kawasaki', 'rensselaer', 'brussels', 'strasbourg'], 
                            help='Specific backend name (required if --backend_type=qpu or --noise-model=real)')
     qpu_group.add_argument('--noise-model', type=str, choices=['zero_noise', 'real', 'custom'], default='real', required=False, help='Noise model to use with aer_simulator (default: real)')
     
     # Custom noise parameters (only relevant if --noise-model=custom)
     noise_group = parser.add_argument_group('Custom Noise Parameters')
-    noise_group.add_argument('--readout-error', type=float, default=0.01, help='Readout error probability')
-    noise_group.add_argument('--gate-error', type=float, default=0.001, help='Gate error probability')
-    noise_group.add_argument('--thermal-relaxation', type=float, default=0.01, help='Thermal relaxation probability')
+    noise_group.add_argument('--prob0-given1', type=float, default=0.01, help='Probability of measuring 0 when the true state is 1 (readout error)')
+    noise_group.add_argument('--prob1-given0', type=float, default=0.01, help='Probability of measuring 1 when the true state is 0 (readout error)')
+    noise_group.add_argument('--error-prob-1qubit-gate', type=float, default=0.001, help='Depolarizing error probability for 1-qubit gates')
+    noise_group.add_argument('--error-prob-2qubit-gate', type=float, default=0.01, help='Depolarizing error probability for 2-qubit gates')
     
     # State preparation
     state_group = parser.add_argument_group('Initial qubit preparation options')
@@ -171,16 +172,12 @@ def main():
     povm = create_povm(args.povm)    
     
     # Handle backend creation
-    backend_kwargs = {}
-    if hasattr(args, 'backend_name') and args.backend_name:
-        backend_kwargs['backend_name'] = args.backend_name
-    backend = create_backend(args.backend_type, **backend_kwargs)
+    backend = create_backend(args.backend_type, args)
 
     # Create the quantum circuit
     qc = povm.create_circuit()
 
     state.prepare(qc)
-
     print(f"Prepared state: {state.label}")
 
     # Add POVM measurement

@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from qiskit_ibm_runtime import SamplerV2 as Sampler, QiskitRuntimeService
 from qiskit_ibm_runtime.fake_provider import FakeManilaV2        
 from qiskit_aer import AerSimulator
+from qiskit_aer.noise import NoiseModel, ReadoutError, depolarizing_error
 
 
 class Backend(ABC):
@@ -35,9 +36,9 @@ class Backend(ABC):
     def get_sampler(self):
         """
         Return a sampler configured for this backend.
-        
+        For AerSimulatorBackend, return None to signal direct backend.run() usage.
         Returns:
-            Sampler: The sampler instance configured for this backend.
+            Sampler or None: The sampler instance configured for this backend, or None for AerSimulatorBackend.
         """
         return self._sampler
     
@@ -64,7 +65,7 @@ class QPUBackend(Backend):
     This backend connects to real quantum hardware through IBM Quantum services.
     """
     
-    def __init__(self, backend_name="least_busy"):
+    def __init__(self, arguments):
         """
         Initialize a QPU backend.
         
@@ -73,11 +74,11 @@ class QPUBackend(Backend):
                                to automatically select the least busy available QPU.
                                Default is "least_busy".
         """
-        self.backend_name = backend_name
-        if backend_name == "least_busy":
+        self.backend_name = arguments.backend_name
+        if self.backend_name == "least_busy":
             super().__init__(label="QPU Backend (Least Busy)")
         else:
-            super().__init__(label=f"QPU Backend ({backend_name})")
+            super().__init__(label=f"QPU Backend ({self.backend_name})")
         self._initialize_backend()
         
     def _initialize_backend(self):
@@ -145,29 +146,72 @@ class AerSimulatorBackend(Backend):
     """
     Aer Simulator Backend implementation.
     
-    This backend uses the Qiskit Aer simulator for fast, noiseless simulation.
+    This backend uses the Qiskit Aer simulator for fast, noiseless or noisy simulation.
     """
     
-    def __init__(self):
-        """Initialize an Aer simulator backend."""
+    def __init__(self, arguments):
         super().__init__(label="Aer Simulator Backend")
-        self._initialize_backend()
+        self.noise_model = arguments.noise_model
+        self.backend_name = arguments.backend_name
+        self._backend = None
+        self._sampler = None
+        self._initialize_backend(arguments)
         
-    def _initialize_backend(self):
-        """Initialize the Aer simulator backend."""
-        self._backend = AerSimulator()
+    def _initialize_backend(self, arguments):
+        if self.noise_model == "zero_noise":
+            self._backend = AerSimulator()
+        elif self.noise_model == "real":
+            service = QiskitRuntimeService()
+            if self.backend_name == "least_busy":
+                real_backend = service.least_busy(operational=True, simulator=False)
+            else:
+                real_backend = service.backend(self.backend_name)
+            self._backend = AerSimulator.from_backend(real_backend)
+        elif self.noise_model == "custom":
+            noise_model = self.create_noise_model(arguments)
+            self._backend = AerSimulator(noise_model=noise_model)
+
         self._sampler = Sampler(mode=self._backend)
-    
-        # Note: For AerSimulator, we typically don't use the runtime Sampler
-        # but rather the backend directly with execute() or the legacy sampler
-        # self._sampler = None  # Will be handled differently for Aer
+
+    def create_noise_model(self, arguments):
+        """
+        Create a custom Qiskit Aer noise model based on user-specified parameters.
+        Args:
+            readout_error (float): Probability of readout error (applied to all qubits).
+            gate_error (float): Probability of depolarizing error for 1q/2q gates.
+            thermal_relaxation (float): Placeholder for future thermal relaxation modeling.
+        Returns:
+            NoiseModel: Configured Qiskit Aer noise model.
+        """
+
+        noise_model = NoiseModel()
+
+        # Readout error: symmetric for both 0->1 and 1->0
+        p0given1 = arguments.prob0_given1
+        p1given0 = arguments.prob1_given0
+        readout_err = ReadoutError([[1 - p1given0, p1given0], [p0given1, 1 - p0given1]])
+        noise_model.add_all_qubit_readout_error(readout_err)
+
+        # Gate errors
+        prob_1q = arguments.error_prob_1qubit_gate  # 1-qubit gate depolarizing error
+        prob_2q = arguments.error_prob_2qubit_gate  # 2-qubit gate depolarizing error
+        error_1q = depolarizing_error(prob_1q, 1)
+        error_2q = depolarizing_error(prob_2q, 2)
+        noise_model.add_all_qubit_quantum_error(error_1q, ['u1', 'u2', 'u3'])
+        noise_model.add_all_qubit_quantum_error(error_2q, ['cx'])
+
+        return noise_model
+
+    def get_sampler(self):
+        """
+        For AerSimulatorBackend, always return None to signal direct backend.run() usage.
+        """
+        return self._sampler
 
     def provides_immediate_results(self):
-        """Aer simulator backends provide immediate results (local simulation)."""
         return True
 
-
-def create_backend(backend_type="aer_simulator", **kwargs):
+def create_backend(backend_type="aer_simulator", arguments=None):
     """
     Factory method to create different types of quantum backends.
     
@@ -191,11 +235,11 @@ def create_backend(backend_type="aer_simulator", **kwargs):
     backend_type = backend_type.lower()
     
     if backend_type == "qpu":
-        return QPUBackend(**kwargs)
+        return QPUBackend(arguments)
     elif backend_type == "fake_backend":
-        return FakeBackend(**kwargs)
+        return FakeBackend(arguments)
     elif backend_type == "aer_simulator":
-        return AerSimulatorBackend(**kwargs)
+        return AerSimulatorBackend(arguments)
     else:
         valid_types = ["qpu", "fake_backend", "aer_simulator"]
         raise ValueError(f"Invalid backend type '{backend_type}'. Must be one of {valid_types}")
