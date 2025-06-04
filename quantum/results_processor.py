@@ -16,6 +16,8 @@ import os
 from state import create_state_from_args
 from povm import create_povm
 from csv_manager import ExperimentCSVManager
+# Use a predefined colormap from matplotlib for visual distinction
+import matplotlib.cm as cm
 
 
 class QuantumResultsProcessor:
@@ -169,14 +171,53 @@ class QuantumResultsProcessor:
                 new_key = f"{bitstring} ({label})"
                 new_distribution[new_key] = value
             distribution = new_distribution
-        labels = list(distribution.keys())
-        values = list(distribution.values())
+        
+        # Get consistent color mapping for POVM outcomes
+        color_map = self._get_consistent_colors(distribution.keys())
+        
+        # Sort keys for consistency
+        labels = sorted(list(distribution.keys()))
+        values = [distribution[label] for label in labels]
+        colors = [color_map[label] for label in labels]
+        
         plt.ioff()
-        fig, ax = plt.subplots(figsize=(8, 8))
+        fig, ax = plt.subplots(figsize=(10, 8))
+        
         # Compose state and POVM label for title
-        state_label = str(state)
-        povm_label = povm.get_label()
-        ax.pie(values, labels=labels, autopct='%1.1f%%', startangle=90, textprops={'fontsize': 12})
+        state_label = str(state) if state else "Unknown"
+        povm_label = povm.get_label() if hasattr(povm, 'get_label') else "POVM"
+        
+        # Create the pie chart with fixed colors
+        wedges, texts = ax.pie(
+            values, 
+            colors=colors,
+            startangle=90,
+            wedgeprops={'edgecolor': 'w', 'linewidth': 1}
+        )
+        
+        # Add percentage labels
+        bbox_props = dict(boxstyle="square,pad=0.3", fc="w", ec="k", lw=0.72)
+        kw = dict(arrowprops=dict(arrowstyle="-"),
+                bbox=bbox_props, zorder=0, va="center")
+        
+        for i, p in enumerate(wedges):
+            ang = (p.theta2 - p.theta1)/2. + p.theta1
+            y = np.sin(np.deg2rad(ang))
+            x = np.cos(np.deg2rad(ang))
+            
+            # Calculate percent
+            percent = 100. * values[i] / sum(values)
+            label_text = f"{labels[i]}\n({percent:.1f}%)"
+            
+            # Set horizontal alignment based on angle
+            horizontalalignment = {-1: "right", 1: "left"}[int(np.sign(x))]
+            connectionstyle = f"angle,angleA=0,angleB={ang}"
+            kw["arrowprops"].update({"connectionstyle": connectionstyle})
+            
+            # Add the annotation
+            ax.annotate(label_text, xy=(x, y), xytext=(1.35*np.sign(x), 1.1*y),
+                    horizontalalignment=horizontalalignment, **kw)
+        
         ax.set_title(f'{povm_label} Outcome Distribution ({filename_suffix.capitalize()})\nfor state: {state_label}', fontweight='bold')
         plt.tight_layout()
         os.makedirs(output_dir, exist_ok=True)
@@ -224,11 +265,16 @@ class QuantumResultsProcessor:
             self.plot_kl_divergence_analysis(kl_analysis, job_id, output_dir)
             # Plot POVM outcome distribution using Qiskit's histogram, with labels
             self.plot_povm_outcome_distribution_histogram(counts, output_dir, povm, state)
+            
+            # Prepare experimental and theoretical distributions with the same format for consistent coloring
+            experimental_distribution = counts
+            theoretical_distribution = povm.get_theoretical_distribution(state)
+            
             # Plot POVM outcome distribution as pie chart, with labels (experimental)
-            self.plot_povm_distribution_pie(counts, job_id, output_dir, "experimental", povm=povm, state=state)
-            # Plot POVM theoretical distribution as pie chart, with labels
-            theoretical_probs = povm.get_theoretical_distribution(state)
-            self.plot_povm_distribution_pie(theoretical_probs, job_id, output_dir, "theoretical", povm=povm, state=state)
+            self.plot_povm_distribution_pie(experimental_distribution, job_id, output_dir, "experiment", povm=povm, state=state)
+            
+            # Plot POVM theoretical distribution as pie chart, with labels (using same color mapping)
+            self.plot_povm_distribution_pie(theoretical_distribution, job_id, output_dir, "expected", povm=povm, state=state)
             
             # Plot POVM outcome distribution
             outcome_map = povm_labels = str(list(povm.get_outcome_label_map().values()))
@@ -248,6 +294,35 @@ class QuantumResultsProcessor:
             print(f"Error processing job {job.job_id()}: {e}")
             return False
     
+    def _get_consistent_colors(self, labels):
+        """
+        Generate a consistent color mapping for POVM outcome labels.
+        
+        Args:
+            labels: List or set of outcome labels
+            
+        Returns:
+            dict: Mapping from label to color
+        """
+        # Sort labels to ensure consistent color assignment across plots
+        sorted_labels = sorted(list(labels))
+        
+        # Choose a colormap that works well for pie charts
+        colormap = cm.get_cmap('tab20')  # tab20 provides distinct colors for up to 20 categories
+        
+        # If we have more than 20 outcomes, we'll use hsv colormap which can generate more colors
+        if len(sorted_labels) > 20:
+            colormap = cm.get_cmap('hsv')
+        
+        # Generate colors
+        colors = {}
+        for i, label in enumerate(sorted_labels):
+            # Normalize to [0, 1] range for colormap
+            color_index = i / max(1, len(sorted_labels) - 1)
+            colors[label] = colormap(color_index)
+            
+        return colors
+            
     def _get_job_counts(self, job) -> Dict[str, int]:
         """Extract counts from a completed job."""
         result = job.result()
