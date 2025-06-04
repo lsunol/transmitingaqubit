@@ -103,6 +103,39 @@ def check_job_status_and_wait(job, backend, timeout_seconds=30):
     except Exception as e:
         return False, f"Error checking status: {e}"
 
+def generate_quantum_circuit_images(original_circuit, transpiled_circuit, experiment_folder):
+    """
+    Generate and save visualizations of both original and transpiled quantum circuits.
+    
+    Args:
+        original_circuit: The original quantum circuit
+        transpiled_circuit: The transpiled version of the circuit
+        experiment_folder (str): Path to the folder where images should be saved
+    """
+    import matplotlib.pyplot as plt
+    
+    # Generate and save original circuit image
+    try:
+        original_fig = original_circuit.draw(output="mpl")
+        original_path = os.path.join(experiment_folder, "quantum_circuit.png")
+        original_fig.tight_layout()
+        original_fig.savefig(original_path, dpi=300, bbox_inches='tight')
+        plt.close(original_fig)
+        print(f"Original circuit image saved to: {original_path}")
+    except Exception as e:
+        print(f"Failed to save original circuit image: {e}")
+    
+    # Generate and save transpiled circuit image
+    try:
+        transpiled_fig = transpiled_circuit.draw(output="mpl")
+        transpiled_path = os.path.join(experiment_folder, "quantum_circuit_transpiled.png")
+        transpiled_fig.tight_layout()
+        transpiled_fig.savefig(transpiled_path, dpi=300, bbox_inches='tight')
+        plt.close(transpiled_fig)
+        print(f"Transpiled circuit image saved to: {transpiled_path}")
+    except Exception as e:
+        print(f"Failed to save transpiled circuit image: {e}")
+
 def main():
 
     print("Quantum Experiment Runner")
@@ -131,6 +164,7 @@ def main():
     print(qc)
     
     transpiled_circuit = transpile(qc, backend=backend.get_backend())
+
     job = backend.get_sampler().run([transpiled_circuit], shots=args.shots)
     print(f"Job ID: {job.job_id()}")
     
@@ -149,6 +183,8 @@ def main():
     # Setup experiment: create folder and CSV manager in one call
     csv_manager, experiment_folder = ExperimentCSVManager.setup_experiment(
         output_dir="quantum/output", job_data=initial_job_data)
+
+    generate_quantum_circuit_images(qc, transpiled_circuit, experiment_folder)
 
     state.generate_image(experiment_folder)
     povm.generate_image(experiment_folder)
