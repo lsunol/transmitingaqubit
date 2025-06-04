@@ -23,14 +23,14 @@ def parse_arguments():
     qpu_group = parser.add_argument_group('QPU or Simulator Options')
     qpu_group.add_argument('--backend-type', type=str, choices=['qpu', 'fake_backend', 'aer_simulator'], required=True, help='QPU backend name or "simulator"')
     qpu_group.add_argument('--backend-name', type=str, required=False, default="least_busy",
-                           choices=['least_busy', 'aachen', 'kingston', 'marrakesh', 'fez', 'torino', 'sherbrooke', 'quebec', 'brisbane', 'kawasaki', 'rensselaer', 'brussels', 'strasbourg'], 
+                           choices=['least_busy', 'ibm_aachen', 'ibm_kingston', 'ibm_marrakesh', 'ibm_fez', 'ibm_torino', 'ibm_sherbrooke', 'ibm_quebec', 'ibm_brisbane', 'ibm_kawasaki', 'ibm_rensselaer', 'ibm_brussels', 'ibm_strasbourg'], 
                            help='Specific backend name (required if --backend_type=qpu or --noise-model=real)')
     qpu_group.add_argument('--noise-model', type=str, choices=['zero_noise', 'real', 'custom'], default='real', required=False, help='Noise model to use with aer_simulator (default: real)')
     
     # Custom noise parameters (only relevant if --noise-model=custom)
     noise_group = parser.add_argument_group('Custom Noise Parameters')
-    noise_group.add_argument('--prob0-given1', type=float, default=0.01, help='Probability of measuring 0 when the true state is 1 (readout error)')
-    noise_group.add_argument('--prob1-given0', type=float, default=0.01, help='Probability of measuring 1 when the true state is 0 (readout error)')
+    noise_group.add_argument('--prob-meas0-prep1', type=float, default=0.01, help='Probability of measuring 0 when the true state is 1 (readout error)')
+    noise_group.add_argument('--prob-meas1-prep0', type=float, default=0.01, help='Probability of measuring 1 when the true state is 0 (readout error)')
     noise_group.add_argument('--error-prob-1qubit-gate', type=float, default=0.001, help='Depolarizing error probability for 1-qubit gates')
     noise_group.add_argument('--error-prob-2qubit-gate', type=float, default=0.01, help='Depolarizing error probability for 2-qubit gates')
     
@@ -103,62 +103,6 @@ def check_job_status_and_wait(job, backend, timeout_seconds=30):
     except Exception as e:
         return False, f"Error checking status: {e}"
 
-def create_experiment_subfolder(job_id, output_dir="quantum/output"):
-    """
-    Create a subfolder for the current experiment to store related files.
-    
-    Args:
-        job_id (str): The job ID for this experiment
-        output_dir (str): Base output directory
-    
-    Returns:
-        str: Path to the created experiment subfolder
-    """
-    # Ensure output directory exists
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Create experiment-specific subfolder
-    experiment_folder = os.path.join(output_dir, f"experiment_{job_id}")
-    os.makedirs(experiment_folder, exist_ok=True)
-    
-    print(f"Created experiment subfolder: {experiment_folder}")
-    return experiment_folder
-
-def add_experiment_to_master_csv(job_data, output_dir="quantum/output"):
-    """
-    Add initial experiment data to the master CSV file.
-    
-    Args:
-        job_data (dict): Dictionary containing initial job information
-        output_dir (str): Directory containing the master CSV file
-    
-    Returns:
-        tuple: (csv_manager, experiment_folder_path)
-    """
-    # Initialize CSV manager
-    csv_manager = ExperimentCSVManager(output_dir)
-    
-    # Create experiment subfolder
-    experiment_folder = create_experiment_subfolder(job_data['job_id'], output_dir)
-    
-    # Create experiment record
-    experiment_record = csv_manager.create_experiment_record(
-        job_id=job_data['job_id'],
-        experiment_folder=f"experiment_{job_data['job_id']}",
-        backend_type=job_data['backend_type'],
-        backend_name=job_data.get('backend_name', ''),
-        noise_model=job_data.get('noise_model', ''),
-        state=job_data['state'],
-        povm=job_data['povm'],
-        total_shots=job_data['shots'],
-        povm_labels=job_data.get('povm_labels', '')
-    )
-    
-    # Add to CSV
-    csv_manager.append_experiment_data(experiment_record)
-    
-    return csv_manager, experiment_folder
-
 def main():
 
     print("Quantum Experiment Runner")
@@ -199,9 +143,12 @@ def main():
         'state': args.state,
         'povm': args.povm,
         'povm_labels': str(list(povm.get_outcome_label_map().values())),
-        'shots': args.shots
+        'shots': args.shots,
+        **backend.get_mean_noise_errors()    
     }
-    csv_manager, experiment_folder = add_experiment_to_master_csv(initial_job_data)
+    # Setup experiment: create folder and CSV manager in one call
+    csv_manager, experiment_folder = ExperimentCSVManager.setup_experiment(
+        output_dir="quantum/output", job_data=initial_job_data)
 
     state.generate_image(experiment_folder)
     povm.generate_image(experiment_folder)

@@ -8,6 +8,7 @@ from qiskit_ibm_runtime import SamplerV2 as Sampler, QiskitRuntimeService
 from qiskit_ibm_runtime.fake_provider import FakeManilaV2        
 from qiskit_aer import AerSimulator
 from qiskit_aer.noise import NoiseModel, ReadoutError, depolarizing_error
+import numpy as np
 
 
 class Backend(ABC):
@@ -56,6 +57,74 @@ class Backend(ABC):
     def __str__(self):
         """String representation of the backend."""
         return self.label
+
+    def get_mean_noise_errors(self):
+        """
+        Returns the mean values for:
+        1. Probability of measuring 0 when preparing 1 (readout error)
+        2. Probability of measuring 1 when preparing 0 (readout error)
+        3. Error probability of 1-qubit gates
+        4. Error probability of 2-qubit gates
+        Returns:
+            dict: {
+                'prob_meas0_prep1': float,
+                'prob_meas1_prep0': float,
+                'error_prob_1qubit_gate': float,
+                'error_prob_2qubit_gate': float
+            }
+        """
+        # Getting backend properties
+        if self._backend is None:
+            raise RuntimeError("Backend is not initialized.")
+        if not hasattr(self._backend, 'properties') or self._backend.properties is None:
+            raise RuntimeError("Backend does not provide properties for noise analysis.")
+        properties = self._backend.properties()
+        if properties is None:
+            raise RuntimeError("Backend properties() returned None.")
+
+        # Getting backend configuration
+        config = self._backend.configuration() if hasattr(self._backend, 'configuration') else None
+        if config is None:
+            raise RuntimeError("Backend does not provide configuration().")
+        n_qubits = config.n_qubits
+
+        # Readout errors (symmetric, so just use one value per qubit)
+        readout_errors = []
+        for q in range(n_qubits):
+            ro_err = properties.readout_error(q)
+            readout_errors.append(ro_err)
+
+        mean_readout_error = np.mean(readout_errors) if readout_errors else 0.0
+
+        # Gate errors
+        basis_gates = config.basis_gates
+        oneq_gates = [g for g in ['x', 'sx', 'rz'] if g in basis_gates]
+        twoq_gates = [g for g in ['cx', 'ecr', 'cz'] if g in basis_gates]
+        oneq_gate_errors = []
+        twoq_gate_errors = []
+        # Defensive: properties.gates may not exist or may not be iterable
+        gates = getattr(properties, 'gates', None)
+        if gates is None or not hasattr(gates, '__iter__'):
+            raise RuntimeError("Backend properties do not provide an iterable 'gates' attribute.")
+        for gate in gates:
+            name = getattr(gate, 'gate', None)
+            qubits = getattr(gate, 'qubits', None)
+            
+            if name in oneq_gates and qubits and len(qubits) == 1:
+                err = [item['value'] for item in gate.to_dict()['parameters'] if item['name'] == 'gate_error'][0]
+                oneq_gate_errors.append(err)
+            elif name in twoq_gates and qubits and len(qubits) == 2:
+                err = [item['value'] for item in gate.to_dict()['parameters'] if item['name'] == 'gate_error'][0]
+                twoq_gate_errors.append(err)
+
+        mean_error_1q = np.mean(oneq_gate_errors) if oneq_gate_errors else 0.0
+        mean_error_2q = np.mean(twoq_gate_errors) if twoq_gate_errors else 0.0
+
+        return {
+            'readout_error': mean_readout_error,
+            'error_prob_1qubit_gate': mean_error_1q,
+            'error_prob_2qubit_gate': mean_error_2q
+        }
 
 
 class QPUBackend(Backend):
@@ -187,8 +256,8 @@ class AerSimulatorBackend(Backend):
         noise_model = NoiseModel()
 
         # Readout error: symmetric for both 0->1 and 1->0
-        p0given1 = arguments.prob0_given1
-        p1given0 = arguments.prob1_given0
+        p0given1 = arguments.prob_meas0_prep1
+        p1given0 = arguments.prob_meas1_prep0
         readout_err = ReadoutError([[1 - p1given0, p1given0], [p0given1, 1 - p0given1]])
         noise_model.add_all_qubit_readout_error(readout_err)
 
