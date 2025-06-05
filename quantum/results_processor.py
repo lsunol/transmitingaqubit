@@ -32,7 +32,7 @@ class QuantumResultsProcessor:
         """
         self.csv_manager = csv_manager
     
-    def plot_kl_divergence_analysis(self, kl_analysis: List[Dict], job_id: str, output_dir: str) -> str:
+    def plot_kl_divergence_analysis(self, kl_analysis: List[Dict], job_id: str, output_dir: str, povm=None, state=None) -> str:
         """
         Plot KL divergence analysis and save as PNG.
         
@@ -40,6 +40,8 @@ class QuantumResultsProcessor:
             kl_analysis (list): List of dicts with 'shots' and 'kl_divergence' keys
             job_id (str): Job ID for the plot title
             output_dir (str): Output directory to save the plot
+            povm: POVM object for labeling (optional)
+            state: State object for labeling (optional)
             
         Returns:
             str: Path to saved plot file
@@ -103,7 +105,9 @@ class QuantumResultsProcessor:
         plt.legend()
         
         # Overall figure title
-        plt.suptitle(f'KL Divergence Analysis - Job {job_id}', fontsize=14, fontweight='bold')
+        povm_label = povm.get_label() if povm is not None and hasattr(povm, 'get_label') else ''
+        state_label = str(state) if state is not None else ''
+        plt.suptitle(f'KL divergence analysis - {povm_label} - State {state_label}', fontsize=14, fontweight='bold')
         
         # Adjust layout
         plt.tight_layout()
@@ -238,6 +242,7 @@ class QuantumResultsProcessor:
         Returns:
             bool: True if processing was successful, False otherwise
         """
+        import json
         try:
             job_id = job.job_id()
             print(f"Processing completed job {job_id}...")
@@ -257,12 +262,28 @@ class QuantumResultsProcessor:
             kl_analysis = povm.calculate_kl_divergence(experimental_results, state)
             print(f"  KL Divergence calculated: {len(kl_analysis)} data points")
             
-            # Set output directory for plots
+            # Set output directory for plots and data files
             output_dir = f"quantum/output/experiment_{job_id}"
             os.makedirs(output_dir, exist_ok=True)
-            
+
+            # --- Save experiment results as JSON ---
+            experiment_results_path = os.path.join(output_dir, "experiment_results.json")
+            with open(experiment_results_path, 'w', encoding='utf-8') as f:
+                json.dump(experimental_results, f, ensure_ascii=False, indent=2)
+            print(f"  ✓ Experimental results saved: {experiment_results_path}")
+
+            # --- Save KL divergence values as JSON ---
+            kl_divergence_json = [
+                {"shots": int(entry["shots"]), "kl_divergence_value": float(entry["kl_divergence"])}
+                for entry in kl_analysis
+            ]
+            kl_divergence_path = os.path.join(output_dir, "kl_divergence_values.json")
+            with open(kl_divergence_path, 'w', encoding='utf-8') as f:
+                json.dump(kl_divergence_json, f, ensure_ascii=False, indent=2)
+            print(f"  ✓ KL divergence values saved: {kl_divergence_path}")
+
             # Plot KL divergence analysis
-            self.plot_kl_divergence_analysis(kl_analysis, job_id, output_dir)
+            self.plot_kl_divergence_analysis(kl_analysis, job_id, output_dir, povm=povm, state=state)
             # Plot POVM outcome distribution using Qiskit's histogram, with labels
             self.plot_povm_outcome_distribution_histogram(counts, output_dir, povm, state)
             
@@ -279,9 +300,9 @@ class QuantumResultsProcessor:
             # Plot POVM outcome distribution
             outcome_map = povm_labels = str(list(povm.get_outcome_label_map().values()))
             
-            # Create updated job data
+            # Create updated job data (store only file paths for large data)
             updated_job_data = self._create_updated_job_data(
-                job_data, counts, experimental_results, povm_labels, kl_analysis
+                job_data, counts, experiment_results_path, povm_labels, kl_divergence_path
             )
             
             # Update CSV with results
@@ -335,42 +356,30 @@ class QuantumResultsProcessor:
         return bit_array.get_bitstrings()
     
     def _create_updated_job_data(self, original_job_data: Dict[str, str], 
-                                counts: Dict[str, int], experimental_results: List,
-                                povm_labels: str, kl_analysis: List[Dict]) -> Dict[str, str]:
+                                counts: Dict[str, int], experiment_results_path: str,
+                                povm_labels: str, kl_divergence_path: str) -> Dict[str, str]:
         """
-        Create updated job data with results.
+        Create updated job data with results, storing only file paths for large data.
         
         Args:
             original_job_data (dict): Original job data from CSV
             counts (dict): Job measurement counts
-            experimental_results (list): Experimental results
+            experiment_results_path (str): Path to experiment_results.json
             povm_labels (str): POVM labels
-            kl_analysis (list): KL divergence analysis data
-            
+            kl_divergence_path (str): Path to kl_divergence_values.json
+        
         Returns:
-            dict: Updated job data with results
+            dict: Updated job data with results (file references)
         """
         updated_data = original_job_data.copy()
         updated_data['counts'] = str(counts)
-        updated_data['experimental_results'] = str(experimental_results)
+        # Store only the relative path to the experiment results JSON
+        updated_data['experimental_results_file'] = os.path.relpath(experiment_results_path, start=os.path.dirname(self.csv_manager.master_csv_path))
         updated_data['povm_labels'] = povm_labels
-        
-        # Format KL analysis
-        if kl_analysis and len(kl_analysis) > 0:
-            shots_list = []
-            values_list = []
-            for entry in kl_analysis:
-                shots = entry['shots']
-                kl_value = entry['kl_divergence']
-                # Convert np.float64 to Python float if needed
-                if hasattr(kl_value, 'item'):
-                    kl_value = kl_value.item()
-                shots_list.append(str(shots))
-                values_list.append(str(kl_value))
-            updated_data['kl_divergence_shots'] = ';'.join(shots_list)
-            updated_data['kl_divergence_value'] = ';'.join(values_list)
-        else:
-            updated_data['kl_divergence_shots'] = ''
-            updated_data['kl_divergence_value'] = ''
-        
+        # Store only the relative path to the KL divergence JSON
+        updated_data['kl_divergence_file'] = os.path.relpath(kl_divergence_path, start=os.path.dirname(self.csv_manager.master_csv_path))
+        # Remove old large fields if present
+        updated_data.pop('experimental_results', None)
+        updated_data.pop('kl_divergence_value', None)
+        updated_data.pop('kl_divergence_shots', None)
         return updated_data

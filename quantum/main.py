@@ -11,6 +11,7 @@ from backend import create_backend
 from povm import create_povm
 from csv_manager import ExperimentCSVManager
 from results_processor import QuantumResultsProcessor
+import matplotlib.pyplot as plt
 
 def parse_arguments():
     """Parse command line arguments with no fallback to interactive mode."""
@@ -112,7 +113,6 @@ def generate_quantum_circuit_images(original_circuit, transpiled_circuit, experi
         transpiled_circuit: The transpiled version of the circuit
         experiment_folder (str): Path to the folder where images should be saved
     """
-    import matplotlib.pyplot as plt
     
     # Generate and save original circuit image
     try:
@@ -126,15 +126,15 @@ def generate_quantum_circuit_images(original_circuit, transpiled_circuit, experi
         print(f"Failed to save original circuit image: {e}")
     
     # Generate and save transpiled circuit image
-    try:
-        transpiled_fig = transpiled_circuit.draw(output="mpl")
-        transpiled_path = os.path.join(experiment_folder, "quantum_circuit_transpiled.png")
-        transpiled_fig.tight_layout()
-        transpiled_fig.savefig(transpiled_path, dpi=300, bbox_inches='tight')
-        plt.close(transpiled_fig)
-        print(f"Transpiled circuit image saved to: {transpiled_path}")
-    except Exception as e:
-        print(f"Failed to save transpiled circuit image: {e}")
+    # try:
+    #     transpiled_fig = transpiled_circuit.draw(output="mpl")
+    #     transpiled_path = os.path.join(experiment_folder, "quantum_circuit_transpiled.png")
+    #     transpiled_fig.tight_layout()
+    #     transpiled_fig.savefig(transpiled_path, dpi=300, bbox_inches='tight')
+    #     plt.close(transpiled_fig)
+    #     print(f"Transpiled circuit image saved to: {transpiled_path}")
+    # except Exception as e:
+    #     print(f"Failed to save transpiled circuit image: {e}")
 
 def main():
 

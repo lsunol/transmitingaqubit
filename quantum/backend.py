@@ -80,7 +80,11 @@ class Backend(ABC):
             raise RuntimeError("Backend does not provide properties for noise analysis.")
         properties = self._backend.properties()
         if properties is None:
-            raise RuntimeError("Backend properties() returned None.")
+            return {
+                'readout_error': 0,
+                'error_prob_1qubit_gate': 0,
+                'error_prob_2qubit_gate': 0
+            }
 
         # Getting backend configuration
         config = self._backend.configuration() if hasattr(self._backend, 'configuration') else None

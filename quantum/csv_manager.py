@@ -138,7 +138,8 @@ class ExperimentCSVManager:
         pending_jobs = []
         for row in all_experiments:
             # A job is pending if it has no counts or experimental_results
-            if not row['counts'] and not row['experimental_results']:
+            if ((not 'counts' in row or not row['counts']) and 
+                (not 'experimental_results_file' in row or not row['experimental_results_file'])):
                 pending_jobs.append(row)
         
         return pending_jobs
