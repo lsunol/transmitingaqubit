@@ -174,10 +174,10 @@ def main():
         'backend_type': args.backend_type,
         'backend_name': backend.get_backend().name,
         'noise_model': getattr(args, 'noise_model', None),
+        'shots': args.shots,
         'state': args.state,
         'povm': args.povm,
         'povm_labels': str(list(povm.get_outcome_label_map().values())),
-        'shots': args.shots,
         **backend.get_mean_noise_errors()    
     }
     # Setup experiment: create folder and CSV manager in one call

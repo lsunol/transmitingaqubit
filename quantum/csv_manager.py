@@ -169,14 +169,16 @@ class ExperimentCSVManager:
         for row in all_rows:
             if row['job_id'] in updates_map:
                 row.update(updates_map[row['job_id']])
-          # Get all possible fieldnames from all rows
-        all_fields = set()
-        for row in all_rows:
-            all_fields.update(row.keys())
+        
+        # --- Use existing CSV header order as base, append new fields at the end in order of first updated job ---
+        existing_field_order = self._get_existing_fieldnames()
+        # Find new fields in updated_jobs[0] that are not in existing_field_order
+        new_fields = [f for f in updated_jobs[0].keys() if f not in existing_field_order]
+        final_fieldnames = existing_field_order + new_fields
         
         # Write updated CSV
         with open(self.master_csv_path, 'w', newline='', encoding='utf-8') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=list(all_fields))
+            writer = csv.DictWriter(csvfile, fieldnames=final_fieldnames)
             writer.writeheader()
             writer.writerows(all_rows)
         
