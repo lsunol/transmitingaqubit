@@ -34,92 +34,110 @@ class QuantumResultsProcessor:
     
     def plot_kl_divergence_analysis(self, kl_analysis: List[Dict], job_id: str, output_dir: str, povm=None, state=None) -> str:
         """
-        Plot KL divergence analysis and save as PNG.
-        
-        Args:
-            kl_analysis (list): List of dicts with 'shots' and 'kl_divergence' keys
-            job_id (str): Job ID for the plot title
-            output_dir (str): Output directory to save the plot
-            povm: POVM object for labeling (optional)
-            state: State object for labeling (optional)
-            
-        Returns:
-            str: Path to saved plot file
+        Plot KL divergence analysis and save as PNG. Also saves each subplot as a separate PNG file.
         """
         if not kl_analysis or len(kl_analysis) == 0:
             print(f"  Warning: No KL analysis data to plot for job {job_id}")
             return ""
         
-        # Extract shots and KL divergence values
         shots = np.array([entry['shots'] for entry in kl_analysis])
         kl_values = np.array([entry['kl_divergence'] for entry in kl_analysis])
-        # Create the plot
-        plt.ioff()  # Turn off interactive mode
-        fig = plt.figure(figsize=(12, 8))
-        
-        # Main plot
-        plt.subplot(2, 2, 1)
-        scatter = plt.scatter(shots, kl_values, alpha=0.7, s=30, c=kl_values, cmap='viridis', edgecolors='none')
-        plt.plot(shots, kl_values, 'b-', alpha=0.5, linewidth=1)
-        plt.xlabel('Number of Shots', fontweight='bold')
-        plt.ylabel('KL Divergence Value', fontweight='bold')
-        plt.title(f'KL Divergence vs Number of Shots', fontweight='bold')
-        plt.grid(True, alpha=0.3)
-        plt.colorbar(scatter, label='KL Divergence Value')
-        
-        # Log scale plot
-        plt.subplot(2, 2, 2)
-        plt.scatter(shots, kl_values, alpha=0.7, s=20, color='green')
-        plt.xlabel('Number of Shots', fontweight='bold')
-        plt.ylabel('KL Divergence (log scale)', fontweight='bold')
-        plt.title('KL Divergence (Log Scale)', fontweight='bold')
-        plt.yscale('log')
-        plt.grid(True, alpha=0.3)
-        
-        # Histogram of KL divergence values
-        plt.subplot(2, 2, 3)
-        n_bins = min(30, len(kl_values) // 5) if len(kl_values) > 10 else 10
-        plt.hist(kl_values, bins=n_bins, color='orange', alpha=0.7, edgecolor='black', linewidth=0.5)
-        plt.xlabel('KL Divergence Value', fontweight='bold')
-        plt.ylabel('Frequency', fontweight='bold')
-        plt.title('Distribution of KL Divergence Values', fontweight='bold')
-        plt.grid(True, alpha=0.3)
-        
-        # Convergence trend (moving average if enough data points)
-        plt.subplot(2, 2, 4)
-        plt.plot(shots, kl_values, 'b-', alpha=0.6, linewidth=1, label='KL Divergence')
-        
-        # Add moving average if we have enough points
-        if len(kl_values) > 20:
-            window_size = min(50, len(kl_values) // 10)
-            if window_size > 1:
-                moving_avg = np.convolve(kl_values, np.ones(window_size)/window_size, mode='valid')
-                avg_shots = shots[window_size-1:]
-                plt.plot(avg_shots, moving_avg, 'red', linewidth=2, alpha=0.8, 
-                        label=f'Moving Average (window={window_size})')
-        
-        plt.xlabel('Number of Shots', fontweight='bold')
-        plt.ylabel('KL Divergence', fontweight='bold')
-        plt.title('Convergence Trend', fontweight='bold')
-        plt.grid(True, alpha=0.3)
-        plt.legend()
-        
-        # Overall figure title
+        plt.ioff()
+
+        # --- Helper functions for each plot ---
+        def plot_vs_shots(ax):
+            scatter = ax.scatter(shots, kl_values, alpha=0.7, s=30, c=kl_values, cmap='viridis', edgecolors='none')
+            ax.plot(shots, kl_values, 'b-', alpha=0.5, linewidth=1)
+            ax.set_xlabel('Number of Shots', fontweight='bold')
+            ax.set_ylabel('KL Divergence Value', fontweight='bold')
+            ax.set_title('KL Divergence vs Number of Shots', fontweight='bold')
+            ax.grid(True, alpha=0.3)
+            return scatter
+
+        def plot_log_scale(ax):
+            ax.scatter(shots, kl_values, alpha=0.7, s=20, color='green')
+            ax.set_xlabel('Number of Shots', fontweight='bold')
+            ax.set_ylabel('KL Divergence (log scale)', fontweight='bold')
+            ax.set_title('KL Divergence (Log Scale)', fontweight='bold')
+            ax.set_yscale('log')
+            ax.grid(True, alpha=0.3)
+
+        def plot_hist(ax):
+            n_bins = min(30, len(kl_values) // 5) if len(kl_values) > 10 else 10
+            ax.hist(kl_values, bins=n_bins, color='orange', alpha=0.7, edgecolor='black', linewidth=0.5)
+            ax.set_xlabel('KL Divergence Value', fontweight='bold')
+            ax.set_ylabel('Frequency', fontweight='bold')
+            ax.set_title('Distribution of KL Divergence Values', fontweight='bold')
+            ax.grid(True, alpha=0.3)
+
+        def plot_convergence(ax):
+            ax.plot(shots, kl_values, 'b-', alpha=0.6, linewidth=1, label='KL Divergence')
+            if len(kl_values) > 20:
+                window_size = min(50, len(kl_values) // 10)
+                if window_size > 1:
+                    moving_avg = np.convolve(kl_values, np.ones(window_size)/window_size, mode='valid')
+                    avg_shots = shots[window_size-1:]
+                    ax.plot(avg_shots, moving_avg, 'red', linewidth=2, alpha=0.8, 
+                            label=f'Moving Average (window={window_size})')
+            ax.set_xlabel('Number of Shots', fontweight='bold')
+            ax.set_ylabel('KL Divergence', fontweight='bold')
+            ax.set_title('Convergence Trend', fontweight='bold')
+            ax.grid(True, alpha=0.3)
+            ax.legend()
+
+        # --- Combined 4-subplot figure ---
+        fig, axs = plt.subplots(2, 2, figsize=(12, 8))
+        scatter = plot_vs_shots(axs[0, 0])
+        fig.colorbar(scatter, ax=axs[0, 0], label='KL Divergence Value')
+        plot_log_scale(axs[0, 1])
+        plot_hist(axs[1, 0])
+        plot_convergence(axs[1, 1])
         povm_label = povm.get_label() if povm is not None and hasattr(povm, 'get_label') else ''
         state_label = str(state) if state is not None else ''
-        plt.suptitle(f'KL divergence analysis - {povm_label} - State {state_label}', fontsize=14, fontweight='bold')
-        
-        # Adjust layout
-        plt.tight_layout()
-        plt.subplots_adjust(top=0.93)
-        
-        # Save the plot
+        fig.suptitle(f'KL divergence analysis - {povm_label} - State {state_label}', fontsize=14, fontweight='bold')
+        fig.tight_layout()
+        fig.subplots_adjust(top=0.93)
         os.makedirs(output_dir, exist_ok=True)
         output_path = os.path.join(output_dir, "kl_divergence_analysis.png")
-        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
-        plt.close()  # Close to free memory
-        
+        fig.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close(fig)
         print(f"  ✓ KL divergence plot saved: {output_path}")
+
+        # --- Individual plots using the same helpers ---
+        # 1. KL Divergence vs Number of Shots
+        fig1, ax1 = plt.subplots(figsize=(7, 5))
+        scatter1 = plot_vs_shots(ax1)
+        fig1.colorbar(scatter1, ax=ax1, label='KL Divergence Value')
+        fig1.tight_layout()
+        file1 = os.path.join(output_dir, "kl_divergence_analysis_vs_shots.png")
+        fig1.savefig(file1, dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close(fig1)
+
+        # 2. KL Divergence (Log Scale)
+        fig2, ax2 = plt.subplots(figsize=(7, 5))
+        plot_log_scale(ax2)
+        fig2.tight_layout()
+        file2 = os.path.join(output_dir, "kl_divergence_analysis_log_scale.png")
+        fig2.savefig(file2, dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close(fig2)
+
+        # 3. Distribution of KL Divergence Values (Histogram)
+        fig3, ax3 = plt.subplots(figsize=(7, 5))
+        plot_hist(ax3)
+        fig3.tight_layout()
+        file3 = os.path.join(output_dir, "kl_divergence_analysis_histogram.png")
+        fig3.savefig(file3, dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close(fig3)
+
+        # 4. Convergence Trend
+        fig4, ax4 = plt.subplots(figsize=(7, 5))
+        plot_convergence(ax4)
+        fig4.tight_layout()
+        file4 = os.path.join(output_dir, "kl_divergence_analysis_convergence.png")
+        fig4.savefig(file4, dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close(fig4)
+
+        print(f"  ✓ Individual KL divergence plots saved: {file1}, {file2}, {file3}, {file4}")
         return output_path
 
     def plot_povm_outcome_distribution_histogram(self, counts: dict, output_dir: str, povm, state) -> str:
