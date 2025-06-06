@@ -12,6 +12,7 @@ import math
 from scipy.linalg import qr
 import qutip as qt
 import os
+import state as state_module
 
 
 class POVM(ABC):
@@ -265,6 +266,20 @@ class POVM(ABC):
         """Return the label of the POVM."""
         return self.label
 
+    def reconstruct_original_state(self, experimental_distribution, output_dir):
+        """
+        Reconstruct the original quantum state from the experimental distribution using this POVM.
+        Only implemented for SICPOVM. Returns a State.Custom object and saves a Bloch image.
+        Args:
+            experimental_distribution (dict): Bitstring->count or probability (will be normalized)
+            output_dir (str): Directory to save the image
+            image_prefix (str): Prefix for the output image filename
+        Returns:
+            State.Custom: The reconstructed state
+            str: Path to the saved image
+        """
+        raise NotImplementedError("State reconstruction is only implemented for SICPOVM.")
+
 class BB84POVM(POVM):
     """
     BB84 POVM implementation.
@@ -354,16 +369,16 @@ class SICPOVM(POVM):
     """
     
     def __init__(self):
-        """Initialize a SIC POVM."""
         super().__init__(label="SIC POVM")
-        
-        # Define the Bloch vectors for the tetrahedron vertices
-        self.vectors = [
-            np.array([[1], [0]]),                                                       # North pole
-            (1/np.sqrt(3)) * np.array([[1], [np.sqrt(2)]]),                             # First vertex
-            (1/np.sqrt(3)) * np.array([[1], [np.sqrt(2) * np.exp(2j * np.pi / 3)]]),    # Second vertex
-            (1/np.sqrt(3)) * np.array([[1], [np.sqrt(2) * np.exp(4j * np.pi / 3)]])     # Third vertex
+        # Define the SIC-POVM state vectors (as column vectors)
+        self.psi_list = [
+            np.array([[1], [0]]),
+            (1/np.sqrt(3)) * np.array([[1], [np.sqrt(2)]]),
+            (1/np.sqrt(3)) * np.array([[1], [np.sqrt(2) * np.exp(2j * np.pi / 3)]]),
+            (1/np.sqrt(3)) * np.array([[1], [np.sqrt(2) * np.exp(4j * np.pi / 3)]])
         ]
+        # For compatibility, keep self.vectors for other usages
+        self.vectors = self.psi_list
 
     def create_circuit(self):
         """Create a quantum circuit for SIC POVM measurement."""
@@ -414,7 +429,7 @@ class SICPOVM(POVM):
         # Factor for normalization (1/4 for 2D SIC POVMs)
         factor = 1/4
         
-        for vec in self.vectors:
+        for vec in self.psi_list:
             # Convert state vector to projector: |ψ⟩⟨ψ|
             projector = vec @ vec.conj().T
             
@@ -450,17 +465,8 @@ class SICPOVM(POVM):
             [np.exp(1j * phi) * np.sin(theta / 2)]
         ])
 
-        # SIC-POVM states (matching the ones defined in __init__)
-        psi_0 = np.array([[1], [0]])
-        psi_1 = (1/np.sqrt(3)) * np.array([[1], [np.sqrt(2)]])
-        psi_2 = (1/np.sqrt(3)) * np.array([[1], [np.sqrt(2) * np.exp(2j * np.pi / 3)]])
-        psi_3 = (1/np.sqrt(3)) * np.array([[1], [np.sqrt(2) * np.exp(4j * np.pi / 3)]])
-
-        psi_list = [psi_0, psi_1, psi_2, psi_3]
-
-        # Calculate probabilities
         probs = {}
-        for i, psi_i in enumerate(psi_list):
+        for i, psi_i in enumerate(self.psi_list):
             overlap = np.vdot(psi_i, ket)  # ⟨ψ_i | ψ⟩
             prob = (1/4) * np.abs(overlap)**2
             probs[f'{i:02b}'] = float(prob.real)  # keys '00', '01', '10', '11'
@@ -472,6 +478,43 @@ class SICPOVM(POVM):
             probs[k] /= total
 
         return probs
+    
+    def reconstruct_original_state(self, experimental_distribution, output_dir):
+        """
+        Reconstruct the original quantum state from the experimental SIC-POVM distribution.
+        Returns a State.Custom and saves a Bloch image with the given prefix.
+        Minimal, direct SIC-POVM reconstruction: ρ = sum_i (3p_i - 0.5) |ψ_i⟩⟨ψ_i|.
+        Extract Bloch vector directly from ρ, map to State.Custom.
+        """
+        ordered_keys = ['00', '01', '10', '11']
+        total = sum(experimental_distribution.get(k, 0) for k in ordered_keys)
+        if total == 0:
+            raise ValueError("Experimental distribution is empty or all zero.")
+        p = [experimental_distribution.get(k, 0) / total for k in ordered_keys]
+        # Minimal SIC-POVM state reconstruction
+        rho = np.zeros((2, 2), dtype=complex)
+        for p_i, phi in zip(p, self.psi_list):
+            ket = phi
+            rho += (3 * p_i - 0.5) * (ket @ ket.conj().T)
+        # Extract Bloch vector: x = Tr(rho σ_x), y = Tr(rho σ_y), z = Tr(rho σ_z)
+        sigma_x = np.array([[0, 1], [1, 0]], dtype=complex)
+        sigma_y = np.array([[0, -1j], [1j, 0]], dtype=complex)
+        sigma_z = np.array([[1, 0], [0, -1]], dtype=complex)
+        x = np.real(np.trace(rho @ sigma_x))
+        y = np.real(np.trace(rho @ sigma_y))
+        z = np.real(np.trace(rho @ sigma_z))
+        # Convert to Bloch angles
+        r = np.sqrt(x**2 + y**2 + z**2)
+        if r < 1e-10:
+            theta = 0.0
+            phi_angle = 0.0
+        else:
+            theta = np.arccos(np.clip(z / r, -1, 1))
+            phi_angle = np.arctan2(y, x)
+        # State.Custom expects angles in radians
+        reconstructed_state = state_module.Custom(theta, phi_angle, label="|ψ_reconstructed⟩")
+        output_path = reconstructed_state.generate_image(output_dir, filename_prefix="reconstructed")
+        return reconstructed_state, output_path
     
 
 class MUBPOVM(POVM):

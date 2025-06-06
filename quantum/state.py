@@ -59,12 +59,13 @@ class State(ABC):
                    - phi_deg: azimuthal angle in degrees [0, 360)        """
         pass
     
-    def generate_image(self, output_dir):
+    def generate_image(self, output_dir, filename_prefix="original"):
         """
         Generate and save a PNG image of the quantum state on a Bloch sphere using QuTiP.
         
         Args:
             output_dir (str): Directory path where the PNG will be saved
+            filename_prefix (str): Prefix for the PNG filename (default: 'original')
         
         Returns:
             str: Full path to the saved PNG file
@@ -73,7 +74,7 @@ class State(ABC):
         os.makedirs(output_dir, exist_ok=True)
         
         # Create the full file path with fixed filename
-        output_path = os.path.join(output_dir, "original-qubit-state.png")
+        output_path = os.path.join(output_dir, f"{filename_prefix}-qubit-state.png")
         
         # Create Bloch sphere and add the state
         bloch = qt.Bloch()
@@ -298,7 +299,7 @@ def create_state(state_name, custom_params=None):
     Factory function to create a state based on a string identifier.
     
     Args:
-        state_name (str): Name of the state ('0', '1', '+', '-', 'i', '-i', or 'custom')
+        state_name (str): Name of the state ('zero', 'one', 'plus', 'minus', 'i', 'minus-i', or 'custom')
         custom_params (dict or str, optional): Parameters for custom states
             For 'custom' with angles: {'theta': float, 'phi': float}
             For 'custom' with statevector: {'alpha': complex, 'beta': complex}
@@ -310,17 +311,17 @@ def create_state(state_name, custom_params=None):
     Raises:
         ValueError: If state_name is invalid or if custom_params are missing
     """
-    if state_name == '0':
+    if state_name == 'zero':
         return Zero()
-    elif state_name == '1':
+    elif state_name == 'one':
         return One()
-    elif state_name == '+':
+    elif state_name == 'plus':
         return Plus()
-    elif state_name == '-':
+    elif state_name == 'minus':
         return Minus()
     elif state_name == 'i':
         return PlusI()
-    elif state_name == '-i':
+    elif state_name == 'minus-i':
         return MinusI()
     elif state_name == 'custom':
         if custom_params is None:
@@ -339,6 +340,7 @@ def create_state(state_name, custom_params=None):
             raise ValueError("Invalid custom state parameters")
     else:
         raise ValueError(f"Unknown state: {state_name}")
+
 
 def validate_custom_state(custom_state_str):
     """
@@ -391,7 +393,7 @@ def create_state_from_args(state_name, custom_state_str=None):
     making the main function cleaner by encapsulating all state creation logic here.
     
     Args:
-        state_name (str): Name of the state ('0', '1', '+', '-', 'i', '-i', or 'custom')
+        state_name (str): Name of the state ('zero', 'one', 'plus', 'minus', 'i', 'minus-i', or 'custom')
         custom_state_str (str, optional): Custom state string in "real,imag real,imag" format
                                         (required only when state_name='custom')
     

@@ -37,7 +37,7 @@ def parse_arguments():
     
     # State preparation
     state_group = parser.add_argument_group('Initial qubit preparation options')
-    state_choices = ['0', '1', '+', '-', 'i', '-i', 'custom']
+    state_choices = ['zero', 'one', 'plus', 'minus', 'i', 'minus-i', 'custom']
     state_group.add_argument('--state', type=str, choices=state_choices, required=True, help='Quantum state to prepare')
     state_group.add_argument('--custom-state', type=str, help='Custom state as "real,imag real,imag" (required if --state=custom)')
     
@@ -186,7 +186,7 @@ def main():
 
     generate_quantum_circuit_images(qc, transpiled_circuit, experiment_folder)
 
-    state.generate_image(experiment_folder)
+    state.generate_image(experiment_folder, filename_prefix="original")
     povm.generate_image(experiment_folder)
     
     # Initialize results processor

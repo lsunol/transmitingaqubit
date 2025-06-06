@@ -209,39 +209,25 @@ class QuantumResultsProcessor:
         state_label = str(state) if state else "Unknown"
         povm_label = povm.get_label() if hasattr(povm, 'get_label') else "POVM"
         
-        # Create the pie chart with fixed colors
-        wedges, texts = ax.pie(
-            values, 
+        # Create the pie chart with fixed colors and direct labels
+        def make_autopct(values):
+            def my_autopct(pct):
+                total = sum(values)
+                val = int(round(pct*total/100.0))
+                return f'{pct:.1f}%\n({val})'
+            return my_autopct
+
+        ax.pie(
+            values,
+            labels=labels,
             colors=colors,
             startangle=90,
-            wedgeprops={'edgecolor': 'w', 'linewidth': 1}
+            wedgeprops={'edgecolor': 'w', 'linewidth': 1},
+            autopct=make_autopct(values),
+            textprops={'fontsize': 12, 'weight': 'bold'}
         )
         
-        # Add percentage labels
-        bbox_props = dict(boxstyle="square,pad=0.3", fc="w", ec="k", lw=0.72)
-        kw = dict(arrowprops=dict(arrowstyle="-"),
-                bbox=bbox_props, zorder=0, va="center")
-        
-        for i, p in enumerate(wedges):
-            ang = (p.theta2 - p.theta1)/2. + p.theta1
-            y = np.sin(np.deg2rad(ang))
-            x = np.cos(np.deg2rad(ang))
-            
-            # Calculate percent
-            percent = 100. * values[i] / sum(values)
-            label_text = f"{labels[i]}\n({percent:.1f}%)"
-            
-            # Set horizontal alignment based on angle
-            horizontalalignment = {-1: "right", 1: "left"}[int(np.sign(x))]
-            connectionstyle = f"angle,angleA=0,angleB={ang}"
-            kw["arrowprops"].update({"connectionstyle": connectionstyle})
-            
-            # Add the annotation
-            ax.annotate(label_text, xy=(x, y), xytext=(1.35*np.sign(x), 1.1*y),
-                    horizontalalignment=horizontalalignment, **kw)
-        
         ax.set_title(f'{povm_label} Outcome Distribution ({filename_suffix.capitalize()})\nfor state: {state_label}', fontweight='bold')
-        plt.tight_layout()
         os.makedirs(output_dir, exist_ok=True)
         output_path = os.path.join(output_dir, f"povm_outcome_{filename_suffix}_distribution_pie.png")
         plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
@@ -318,10 +304,42 @@ class QuantumResultsProcessor:
             # Plot POVM outcome distribution
             outcome_map = povm_labels = str(list(povm.get_outcome_label_map().values()))
             
+            # --- Reconstruct original state for SICPOVM and save to CSV ---
+            reconstructed_state_theta = None
+            reconstructed_state_phi = None
+            reconstructed_state_image_file = None
+            if hasattr(povm, 'reconstruct_original_state'):
+                try:
+                    reconstructed_state, image_path = povm.reconstruct_original_state(counts, output_dir)
+                    reconstructed_state_theta, reconstructed_state_phi = reconstructed_state.get_bloch_angles()
+                    # Save relative path for CSV
+                    reconstructed_state_image_file = os.path.relpath(image_path, start=os.path.dirname(self.csv_manager.master_csv_path))
+                    print(f"  ✓ Reconstructed state: theta={reconstructed_state_theta}, phi={reconstructed_state_phi}")
+                    print(f"  ✓ Reconstructed state image saved: {image_path}")
+                    # Diagnostic: compare with expected state
+                    if hasattr(state, 'get_bloch_angles'):
+                        expected_theta, expected_phi = state.get_bloch_angles()
+                        print(f"  [Diagnostic] Expected state: theta={expected_theta}, phi={expected_phi}")
+                        d_theta = abs(reconstructed_state_theta - expected_theta)
+                        d_phi = abs((reconstructed_state_phi - expected_phi + 360) % 360)
+                        print(f"  [Diagnostic] Difference: Δtheta={d_theta}, Δphi={d_phi}")
+                        # Check for antipodal (opposite) direction
+                        if abs(d_theta - 180) < 1e-2:
+                            print("  [Diagnostic] Reconstructed state is antipodal (opposite direction) to expected state.")
+                except Exception as e:
+                    print(f"  ✗ State reconstruction failed: {e}")
+            
             # Create updated job data (store only file paths for large data)
             updated_job_data = self._create_updated_job_data(
                 job_data, counts, experiment_results_path, povm_labels, kl_divergence_path
             )
+            
+            # Add reconstructed state info to CSV
+            if reconstructed_state_theta is not None and reconstructed_state_phi is not None:
+                updated_job_data['reconstructed_state_theta'] = reconstructed_state_theta
+                updated_job_data['reconstructed_state_phi'] = reconstructed_state_phi
+            if reconstructed_state_image_file is not None:
+                updated_job_data['reconstructed_state_image_file'] = reconstructed_state_image_file
             
             # Update CSV with results
             self.csv_manager.update_experiments_with_results([updated_job_data])
