@@ -349,16 +349,66 @@ class BB84POVM(POVM):
         Calculate the theoretical probability distribution for BB84 POVM on the given input state.
         
         Args:
-            input_state (numpy.ndarray): The input quantum state as a density matrix or state vector.
+            input_state: A State object with get_density_matrix method.
         
         Returns:
             dict: Dictionary mapping outcome bitstrings to their theoretical probabilities.
         """
-        # TODO: Implement theoretical distribution calculation for BB84 POVM
-        # This should calculate Born rule probabilities: p_i = Tr(M_i * rho)
-        # where M_i are the POVM operators and rho is the input state density matrix
-        raise NotImplementedError("Theoretical distribution calculation not yet implemented for BB84 POVM")
+        # Use the State object's get_density_matrix method
+        rho = input_state.get_density_matrix()
+        # Get POVM operators
+        operators = self.get_operators()
+        # Get outcome bitstrings
+        outcome_map = self.get_outcome_label_map()
+        bitstrings = list(outcome_map.keys())
+        # Calculate probabilities
+        probs = {}
+        for i, M in enumerate(operators):
+            prob = float(np.real(np.trace(M @ rho)))
+            probs[bitstrings[i]] = prob
+        # Normalize (in case of numerical error)
+        total = sum(probs.values())
+        for k in probs:
+            probs[k] /= total
+        return probs
 
+    def reconstruct_original_state(self, experimental_distribution, output_dir):
+        """
+        Reconstruct the original quantum state from the experimental distribution using this BB84 POVM.
+        Returns a State.Custom object and saves a Bloch image.
+        Args:
+            experimental_distribution (dict): Bitstring->count or probability (will be normalized)
+            output_dir (str): Directory to save the image
+        Returns:
+            State.Custom: The reconstructed state
+            str: Path to the saved image
+        """
+        # Normalize the distribution
+        outcome_map = self.get_outcome_label_map()
+        keys = list(outcome_map.keys())
+        total = sum(experimental_distribution.get(k, 0) for k in keys)
+        if total == 0:
+            raise ValueError("Experimental distribution is empty or all zero.")
+        p0 = experimental_distribution.get(keys[0], 0) / total
+        p1 = experimental_distribution.get(keys[1], 0) / total
+        # Reconstruct Bloch vector
+        if self.basis == 'z':
+            x, y, z = 0.0, 0.0, p0 - p1
+        else:  # 'x'
+            x, y, z = p0 - p1, 0.0, 0.0
+        # Convert to Bloch angles
+        r = np.sqrt(x**2 + y**2 + z**2)
+        if r < 1e-10:
+            theta = 0.0
+            phi_angle = 0.0
+        else:
+            theta = np.arccos(np.clip(z / r, -1, 1))
+            phi_angle = np.arctan2(y, x)
+        # State.Custom expects angles in radians
+        reconstructed_state = state_module.Custom(theta, phi_angle, label="|ψ_reconstructed⟩")
+        output_path = reconstructed_state.generate_image(output_dir, filename_prefix="reconstructed")
+        return reconstructed_state, output_path
+    
 
 class SICPOVM(POVM):
     """
@@ -602,16 +652,67 @@ class MUBPOVM(POVM):
         Calculate the theoretical probability distribution for MUB POVM on the given input state.
         
         Args:
-            input_state (numpy.ndarray): The input quantum state as a density matrix or state vector.
-        
+            input_state: A State object with get_bloch_angles method.
         Returns:
             dict: Dictionary mapping outcome bitstrings to their theoretical probabilities.
         """
-        # TODO: Implement theoretical distribution calculation for MUB POVM
-        # This should calculate Born rule probabilities: p_i = Tr(M_i * rho)
-        # where M_i are the POVM operators and rho is the input state density matrix
-        raise NotImplementedError("Theoretical distribution calculation not yet implemented for MUB POVM")
-
+        # Use the State object's get_density_matrix method
+        rho = input_state.get_density_matrix()
+        # Get POVM operators
+        operators = self.get_operators()
+        # Get outcome bitstrings
+        outcome_map = self.get_outcome_label_map()
+        bitstrings = list(outcome_map.keys())
+        # Calculate probabilities
+        probs = {}
+        for i, M in enumerate(operators):
+            prob = float(np.real(np.trace(M @ rho)))
+            probs[bitstrings[i]] = prob
+        # Normalize (in case of numerical error)
+        total = sum(probs.values())
+        for k in probs:
+            probs[k] /= total
+        return probs
+    
+    def reconstruct_original_state(self, experimental_distribution, output_dir):
+        """
+        Reconstruct the original quantum state from the experimental distribution using this MUB POVM.
+        Returns a State.Custom object and saves a Bloch image.
+        Args:
+            experimental_distribution (dict): Bitstring->count or probability (will be normalized)
+            output_dir (str): Directory to save the image
+        Returns:
+            State.Custom: The reconstructed state
+            str: Path to the saved image
+        """
+        # Normalize the distribution
+        outcome_map = self.get_outcome_label_map()
+        keys = list(outcome_map.keys())
+        total = sum(experimental_distribution.get(k, 0) for k in keys)
+        if total == 0:
+            raise ValueError("Experimental distribution is empty or all zero.")
+        p0 = experimental_distribution.get(keys[0], 0) / total
+        p1 = experimental_distribution.get(keys[1], 0) / total
+        # Reconstruct Bloch vector
+        if self.basis == 'z':
+            x, y, z = 0.0, 0.0, p0 - p1
+        elif self.basis == 'x':
+            x, y, z = p0 - p1, 0.0, 0.0
+        else:  # 'y'
+            x, y, z = 0.0, p0 - p1, 0.0
+        # Convert to Bloch angles
+        r = np.sqrt(x**2 + y**2 + z**2)
+        if r < 1e-10:
+            theta = 0.0
+            phi_angle = 0.0
+        else:
+            theta = np.arccos(np.clip(z / r, -1, 1))
+            phi_angle = np.arctan2(y, x)
+        # State.Custom expects angles in radians
+        reconstructed_state = state_module.Custom(theta, phi_angle, label="|ψ_reconstructed⟩")
+        output_path = reconstructed_state.generate_image(output_dir, filename_prefix="reconstructed")
+        return reconstructed_state, output_path
+    
 
 def create_povm(povm_type='bb84', **kwargs):
     """
