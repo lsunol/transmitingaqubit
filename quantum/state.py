@@ -92,7 +92,16 @@ class State(ABC):
     def __str__(self):
         """String representation of the state."""
         return self.label if self.label else "Unnamed state"
-
+    
+    def get_density_matrix(self):
+        """
+        Return the density matrix for this state.
+        
+        Returns:
+            numpy.ndarray: The 2x2 density matrix ρ = |ψ⟩⟨ψ| for this state.
+        """
+        ket = self.get_statevector().reshape((2, 1))
+        return ket @ ket.conj().T
 
 class Zero(State):
     """State |0⟩."""
