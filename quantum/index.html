@@ -77,17 +77,18 @@
     // Helper to fetch and parse CSV
     async function fetchExperiments() {
         console.log('Fetching experiments_master.csv...');
-        const response = await fetch('output/experiments_master.csv');
+        const outputPrefix = await getOutputPrefix();
+        const response = await fetch(`${outputPrefix}/experiments_master.csv`);
         const text = await response.text();
         const experiments = parseCSV(text);
         console.log('Experiments loaded:', experiments);
-        return experiments;
+        return {experiments, outputPrefix};
     }
 
     // Helper to fetch image files in a folder (assumes directory listing is enabled)
-    async function fetchImages(folder) {
+    async function fetchImages(folder, outputPrefix) {
         console.log('Fetching images for folder:', folder);
-        const response = await fetch(`output/${folder}/`);
+        const response = await fetch(`${outputPrefix}/${folder}/`);
         const html = await response.text();
         // Parse links to images (png, jpg, jpeg, gif)
         const regex = /href="([^\"]+\.(png|jpg|jpeg|gif))"/gi;
@@ -99,11 +100,22 @@
         return images;
     }
 
+    // Helper to resolve the correct output path prefix by checking file existence
+    async function getOutputPrefix() {
+        // Try to fetch ./experiments_master.csv first
+        try {
+            const test = await fetch('./experiments_master.csv', {method: 'HEAD'});
+            if (test.ok) return '.';
+        } catch (e) {}
+        // Fallback to ./output/experiments_master.csv
+        return './output';
+    }
+
     async function main() {
         const experimentList = document.getElementById('experimentList');
         const imagesDiv = document.getElementById('images');
         const infoDiv = document.getElementById('experimentInfo');
-        const experiments = await fetchExperiments();
+        const {experiments, outputPrefix} = await fetchExperiments();
         // Render all experiments as a list group
         experimentList.innerHTML = experiments.map((exp, idx) => {
             const label = `state=${exp.state} | povm=${exp.povm} | backend_type=${exp.backend_type} | shots=${exp.shots}`;
@@ -134,7 +146,7 @@
                       <tr><th>POVM</th><td>${selectedExp.povm}</td></tr>
                     </table>`;
                 }
-                const images = await fetchImages(folder);
+                const images = await fetchImages(folder, outputPrefix);
                 // Filter out kl_divergence_analysis.png
                 const filteredImages = images.filter(img => img !== 'kl_divergence_analysis.png');
                 // Helper to find image by partial name
@@ -185,7 +197,7 @@
                         imgs.map((img, i) =>
                             img ? `<div class="${colClass} d-flex flex-column align-items-center">`+
                                 `<div class="text-center small fw-bold mb-1">${captionsArr[i]}</div>`+
-                                `<img src="output/${folder}/${img}" alt="${img}" class="img-fluid mb-2 previewable-img" data-imgsrc="output/${folder}/${img}">`+
+                                `<img src="${outputPrefix}/${folder}/${img}" alt="${img}" class="img-fluid mb-2 previewable-img" data-imgsrc="${outputPrefix}/${folder}/${img}">`+
                                 `</div>` : ''
                         ).join('') +
                         `</div>`;

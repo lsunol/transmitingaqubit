@@ -8,6 +8,8 @@ main.py and collect_results.py.
 
 import csv
 import os
+import shutil
+import random
 from datetime import datetime
 from typing import List, Dict, Optional
 
@@ -25,6 +27,44 @@ class ExperimentCSVManager:
         self.output_dir = output_dir
         self.master_csv_path = os.path.join(output_dir, "experiments_master.csv")
     
+    def _copy_index_html_if_needed(self):
+        """Copy index.html and launch scripts to the output directory if they do not exist."""
+        src_index = os.path.join(os.path.dirname(__file__), 'index.html')
+        dst_index = os.path.join(self.output_dir, 'index.html')
+        if os.path.exists(src_index) and not os.path.exists(dst_index):
+            shutil.copy2(src_index, dst_index)
+            print(f"index.html copied to output folder: {dst_index}")
+        # Create launch scripts
+        self._create_launch_scripts()
+
+    def _create_launch_scripts(self):
+        """Create .bat and .sh scripts to launch the server and open the browser."""
+        # Random port between 8000 and 8999
+        port = random.randint(8000, 8999)
+        # Windows batch file
+        bat_content = f"""@echo off
+set PORT={port}
+cd /d %~dp0
+start "" python -m http.server %PORT%
+start "" http://localhost:%PORT%/index.html
+"""
+        bat_path = os.path.join(self.output_dir, 'launch_index.bat')
+        with open(bat_path, 'w', encoding='utf-8') as f:
+            f.write(bat_content)
+        # Unix shell script
+        sh_content = f"""#!/bin/bash
+PORT={port}
+cd "$(dirname "$0")"
+python3 -m http.server $PORT &
+sleep 1
+xdg-open "http://localhost:$PORT/index.html" 2>/dev/null || open "http://localhost:$PORT/index.html"
+"""
+        sh_path = os.path.join(self.output_dir, 'launch_index.sh')
+        with open(sh_path, 'w', encoding='utf-8') as f:
+            f.write(sh_content)
+        os.chmod(sh_path, 0o755)
+        print(f"Launch scripts created: {bat_path}, {sh_path}")
+
     def _get_existing_fieldnames(self) -> List[str]:
         """Get the fieldnames from existing CSV file, or return empty list if file doesn't exist."""
         if not os.path.exists(self.master_csv_path):
@@ -51,12 +91,6 @@ class ExperimentCSVManager:
         return combined_fields
     
 
-    def ensure_master_csv_exists(self):
-        """Create the master CSV file if it doesn't exist."""
-        # The empty file will be created when needed with appropriate headers
-        if not os.path.exists(self.master_csv_path):
-            print(f"CSV file doesn't exist yet. It will be created when data is appended.")
-    
     def _rewrite_csv_with_new_fields(self, fieldnames: List[str], new_data: Dict[str, str]):
         """
         Rewrite the CSV with new fieldnames and append the new data.
@@ -82,6 +116,8 @@ class ExperimentCSVManager:
                 
             # Write new data
             writer.writerow(new_data)
+        # Copy index.html if needed
+        self._copy_index_html_if_needed()
     
     def append_experiment_data(self, experiment_data: Dict[str, str]):
         """
@@ -105,8 +141,8 @@ class ExperimentCSVManager:
             with open(self.master_csv_path, 'a', newline='', encoding='utf-8') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writerow(experiment_data)
-        
-        print(f"Experiment data appended to master CSV: {self.master_csv_path}")
+        # Copy index.html if needed (in case file was just created)
+        self._copy_index_html_if_needed()
     
     def load_all_experiments(self) -> List[Dict[str, str]]:
         """
