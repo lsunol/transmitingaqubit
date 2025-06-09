@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 POVM module for quantum measurements.
 This module contains classes to implement different POVMs using quantum circuits.
@@ -13,6 +14,7 @@ from scipy.linalg import qr
 import qutip as qt
 import os
 import state as state_module
+from state import State
 
 
 class POVM(ABC):
@@ -76,18 +78,38 @@ class POVM(ABC):
             dict: Mapping from outcome bitstrings (e.g., '00', '1') to operator labels (e.g., 'SIC0', '+', etc.)
         """        
 
-    @abstractmethod
-    def get_theoretical_distribution(self, input_state):
+    def get_theoretical_distribution(self, input_state: "State"):
         """
-        Calculate the theoretical probability distribution for measuring this POVM on the given input state.
-        
+        Calculate the theoretical probability distribution for this POVM on the given input state using the Born rule.
         Args:
-            input_state: A State object with get_bloch_angles method.
-          Returns:
+            input_state (State): An instance of State (from state.py) with get_density_matrix().
+        Returns:
             dict: Dictionary mapping outcome bitstrings to their theoretical probabilities.
-                 Keys are the same as in get_outcome_label_map().
+        Raises:
+            TypeError: If input_state is not an instance of State.
         """
-        pass
+        operators = self.get_operators()
+        outcome_map = self.get_outcome_label_map()
+        if outcome_map is None:
+            raise ValueError("Outcome label map not implemented for this POVM")
+        outcome_keys = list(outcome_map.keys())
+
+        # Always use get_density_matrix from State
+        rho = input_state.get_density_matrix()
+
+        # Calculate Born rule probabilities
+        probs = {}
+        for i, M in enumerate(operators):
+            key = outcome_keys[i] if i < len(outcome_keys) else str(i)
+            prob = np.real(np.trace(M @ rho))
+            probs[key] = float(prob)
+
+        # Normalize to ensure sum to 1 (for numerical stability)
+        total = sum(probs.values())
+        if total > 0:
+            for k in probs:
+                probs[k] /= total
+        return probs
 
     def calculate_kl_divergence(self, experimental_results, input_state):
         """
@@ -344,21 +366,6 @@ class BB84POVM(POVM):
         else:
             return {'0': '+', '1': '-'}
 
-    def get_theoretical_distribution(self, input_state):
-        """
-        Calculate the theoretical probability distribution for BB84 POVM on the given input state.
-        
-        Args:
-            input_state (numpy.ndarray): The input quantum state as a density matrix or state vector.
-        
-        Returns:
-            dict: Dictionary mapping outcome bitstrings to their theoretical probabilities.
-        """
-        # TODO: Implement theoretical distribution calculation for BB84 POVM
-        # This should calculate Born rule probabilities: p_i = Tr(M_i * rho)
-        # where M_i are the POVM operators and rho is the input state density matrix
-        raise NotImplementedError("Theoretical distribution calculation not yet implemented for BB84 POVM")
-
 
 class SICPOVM(POVM):
     """
@@ -443,41 +450,6 @@ class SICPOVM(POVM):
         # SIC: outcome '00', '01', '10', '11' map to SIC0, SIC1, SIC2, SIC3
         return {'00': 'SIC0', '01': 'SIC1', '10': 'SIC2', '11': 'SIC3'}    
     
-    def get_theoretical_distribution(self, input_state):
-        """
-        Calculate the theoretical probability distribution for SIC POVM on the given input state.
-        
-        Args:
-            input_state: A State object with get_bloch_angles method.
-        
-        Returns:
-            dict: Dictionary mapping outcome bitstrings to their theoretical probabilities.
-        """
-        # Get Bloch angles from State object
-        theta_deg, phi_deg = input_state.get_bloch_angles()
-
-        phi = np.deg2rad(phi_deg)
-        theta = np.deg2rad(theta_deg)
-
-        # Quantum state |ψ⟩ in spherical coordinates
-        ket = np.array([
-            [np.cos(theta / 2)],
-            [np.exp(1j * phi) * np.sin(theta / 2)]
-        ])
-
-        probs = {}
-        for i, psi_i in enumerate(self.psi_list):
-            overlap = np.vdot(psi_i, ket)  # ⟨ψ_i | ψ⟩
-            prob = (1/4) * np.abs(overlap)**2
-            probs[f'{i:02b}'] = float(prob.real)  # keys '00', '01', '10', '11'
-
-        total = sum(probs.values())
-        
-        # Normalize probabilities
-        for k in probs:
-            probs[k] /= total
-
-        return probs
     
     def reconstruct_original_state(self, experimental_distribution, output_dir):
         """
@@ -596,21 +568,6 @@ class MUBPOVM(POVM):
             return {'0': '+', '1': '-'}
         else:
             return {'0': '+i', '1': '-i'}
-
-    def get_theoretical_distribution(self, input_state):
-        """
-        Calculate the theoretical probability distribution for MUB POVM on the given input state.
-        
-        Args:
-            input_state (numpy.ndarray): The input quantum state as a density matrix or state vector.
-        
-        Returns:
-            dict: Dictionary mapping outcome bitstrings to their theoretical probabilities.
-        """
-        # TODO: Implement theoretical distribution calculation for MUB POVM
-        # This should calculate Born rule probabilities: p_i = Tr(M_i * rho)
-        # where M_i are the POVM operators and rho is the input state density matrix
-        raise NotImplementedError("Theoretical distribution calculation not yet implemented for MUB POVM")
 
 
 def create_povm(povm_type='bb84', **kwargs):
