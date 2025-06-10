@@ -43,7 +43,7 @@ def parse_arguments():
     
     # POVM selection
     povm_group = parser.add_argument_group('Measurement Options')
-    povm_choices = ['bb84', 'sic', 'mub', 'random']
+    povm_choices = ['bb84', 'sic', 'mub', 'trine', 'random']
     povm_group.add_argument('--povm', type=str, choices=povm_choices, required=True, help='POVM type for measurement')
     povm_group.add_argument('--shots', type=int, default=1024, help='Number of shots for the experiment')
     

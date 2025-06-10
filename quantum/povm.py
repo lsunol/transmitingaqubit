@@ -290,17 +290,72 @@ class POVM(ABC):
 
     def reconstruct_original_state(self, experimental_distribution, output_dir):
         """
-        Reconstruct the original quantum state from the experimental distribution using this POVM.
-        Only implemented for SICPOVM. Returns a State.Custom object and saves a Bloch image.
+        Generic state reconstruction from experimental distribution using this POVM (qubit case).
+        Uses linear inversion: p_i = Tr(M_i rho), with rho expanded in the Pauli basis.
+        Returns a State.Custom object and saves a Bloch image.
         Args:
             experimental_distribution (dict): Bitstring->count or probability (will be normalized)
             output_dir (str): Directory to save the image
-            image_prefix (str): Prefix for the output image filename
         Returns:
             State.Custom: The reconstructed state
             str: Path to the saved image
         """
-        raise NotImplementedError("State reconstruction is only implemented for SICPOVM.")
+        import warnings
+        operators = self.get_operators()
+        outcome_map = self.get_outcome_label_map()
+        if operators is None or outcome_map is None:
+            raise NotImplementedError("POVM must implement get_operators and get_outcome_label_map for reconstruction.")
+        if not hasattr(operators, '__iter__') or isinstance(operators, (str, bytes)):
+            raise TypeError("get_operators() must return an iterable of operator matrices.")
+        operators = list(operators)
+        # Normalize experimental distribution
+        keys = list(outcome_map.keys())
+        total = sum(experimental_distribution.get(k, 0) for k in keys)
+        if total == 0:
+            raise ValueError("Experimental distribution is empty or all zero.")
+        p = np.array([experimental_distribution.get(k, 0) / total for k in keys], dtype=float)
+        # Pauli basis: I, X, Y, Z
+        paulis = [np.eye(2, dtype=complex),
+                  np.array([[0, 1], [1, 0]], dtype=complex),
+                  np.array([[0, -1j], [1j, 0]], dtype=complex),
+                  np.array([[1, 0], [0, -1]], dtype=complex)]
+        # Each operator: Tr(M_i * P_j)
+        A = np.zeros((len(operators), 4), dtype=float)
+        for i, M in enumerate(operators):
+            for j, P in enumerate(paulis):
+                A[i, j] = np.real(np.trace(M @ P))
+        # Solve A x = p for x = [a0, a1, a2, a3] (a0: I, a1: X, a2: Y, a3: Z)
+        # a0 should be 1 for physical states (Tr(rho) = 1)
+        # Use least squares in case of over/under-determined system
+        x, residuals, rank, s = np.linalg.lstsq(A, p, rcond=None)
+        # Warn if the POVM is not informationally complete
+        if rank < 4:
+            warnings.warn("POVM is not informationally complete; reconstructed state may not be unique.")
+        # Build density matrix
+        rho = 0.5 * (x[0] * paulis[0] + x[1] * paulis[1] + x[2] * paulis[2] + x[3] * paulis[3])
+        # Project to physical state if needed (Hermitian, positive semidefinite, trace 1)
+        # Force Hermiticity
+        rho = 0.5 * (rho + rho.conj().T)
+        # Eigen-decompose and zero out negative eigenvalues
+        eigvals, eigvecs = np.linalg.eigh(rho)
+        eigvals = np.clip(eigvals, 0, None)
+        rho = eigvecs @ np.diag(eigvals) @ eigvecs.conj().T
+        rho /= np.trace(rho)
+        # Extract Bloch vector
+        x_bloch = np.real(np.trace(rho @ paulis[1]))
+        y_bloch = np.real(np.trace(rho @ paulis[2]))
+        z_bloch = np.real(np.trace(rho @ paulis[3]))
+        r = np.sqrt(x_bloch**2 + y_bloch**2 + z_bloch**2)
+        if r < 1e-10:
+            theta = 0.0
+            phi_angle = 0.0
+        else:
+            theta = np.arccos(np.clip(z_bloch / r, -1, 1))
+            phi_angle = np.arctan2(y_bloch, x_bloch)
+        reconstructed_state = state_module.Custom(theta, phi_angle, label="|ψ_reconstructed⟩")
+        output_path = reconstructed_state.generate_image(output_dir, filename_prefix="reconstructed")
+        return reconstructed_state, output_path
+    
 
 class BB84POVM(POVM):
     """
@@ -570,6 +625,77 @@ class MUBPOVM(POVM):
             return {'0': '+i', '1': '-i'}
 
 
+class TRINEPOVM(POVM):
+    """
+    TRINE POVM implementation for a qubit.
+    The TRINE POVM consists of 3 operators corresponding to three equally spaced states in the equatorial plane of the Bloch sphere (at 0°, 120°, 240°).
+    """
+    def __init__(self):
+        super().__init__(label="TRINE POVM")
+        # Trine state vectors (in the X-Y plane)
+        self.trine_angles = [0, 2 * np.pi / 3, 4 * np.pi / 3]
+        self.psi_list = [
+            np.array([[1], [np.exp(1j * angle)]]) / np.sqrt(2)
+            for angle in self.trine_angles
+        ]
+        self.vectors = self.psi_list
+
+    def create_circuit(self):
+        """Create a quantum circuit for TRINE POVM measurement."""
+        # Use 2 qubits (1 main + 1 ancilla) and 1 classical bit
+        return QuantumCircuit(2, 2)
+
+    def prepare_measurement(self, qc):
+        """Apply TRINE POVM measurement to the circuit using an explicit Naimark dilation unitary."""
+        # Explicit Naimark dilation for TRINE POVM
+        # See e.g. https://arxiv.org/abs/quant-ph/0407010
+        # The three trine states are mapped to |00>, |01>, |10>
+        import numpy as np
+        from qiskit.circuit.library import UnitaryGate
+        from scipy.linalg import qr
+
+        # Define the three trine states as columns
+        omega = np.exp(2j * np.pi / 3)
+        psi0 = np.array([1, 1]) / np.sqrt(2)
+        psi1 = np.array([1, omega]) / np.sqrt(2)
+        psi2 = np.array([1, omega.conjugate()]) / np.sqrt(2)
+        # Build the 4x3 isometry V
+        V = np.zeros((4, 3), dtype=complex)
+        V[0, 0] = psi0[0]  # |00> <- |0>
+        V[1, 0] = psi0[1]  # |01> <- |1>
+        V[0, 1] = psi1[0]
+        V[1, 1] = psi1[1]
+        V[0, 2] = psi2[0]
+        V[1, 2] = psi2[1]
+        # Complete to a 4x4 unitary
+        # Add a fourth orthonormal column to make it square
+        extra_col = np.zeros((4, 1), dtype=complex)
+        extra_col[3, 0] = 1.0
+        full_mat = np.hstack([V, extra_col])
+        Q = qr(full_mat)[0]  # Only take the Q matrix
+        U = np.array(Q, dtype=complex)  # Ensure it's a numpy array
+        # Apply as a 2-qubit unitary
+        U_gate = UnitaryGate(U, label='U-TRINE-EXPL')
+        qc.append(U_gate, [0, 1])
+        # Measure both qubits
+        qc.measure(0, 0)
+        qc.measure(1, 1)
+        # Use outcome labels from get_outcome_label_map
+        outcome_labels = list(self.get_outcome_label_map().values())
+        return qc, outcome_labels
+
+    def get_operators(self):
+        """Return the theoretical TRINE POVM operators."""
+        # Each operator: (2/3) * |psi_i><psi_i|
+        factor = 2/3
+        operators = [factor * (psi @ psi.conj().T) for psi in self.psi_list]
+        return operators
+
+    def get_outcome_label_map(self):
+        # Only map the three valid outcomes to TRINE labels (no 'null' outcome)
+        return {'00': 'TRINE0', '01': 'TRINE1', '10': 'TRINE2'}
+
+
 def create_povm(povm_type='bb84', **kwargs):
     """
     Factory method to create different types of POVMs.
@@ -596,6 +722,8 @@ def create_povm(povm_type='bb84', **kwargs):
         return SICPOVM(**kwargs)
     elif povm_type == "mub":
         return MUBPOVM(**kwargs)
+    elif povm_type == "trine":
+        return TRINEPOVM(**kwargs)
     else:
-        valid_types = ["bb84", "sic", "mub"]
+        valid_types = ["bb84", "sic", "mub", "trine"]
         raise ValueError(f"Invalid POVM type '{povm_type}'. Must be one of {valid_types}")
