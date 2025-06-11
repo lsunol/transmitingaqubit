@@ -58,7 +58,7 @@ class Backend(ABC):
         """String representation of the backend."""
         return self.label
 
-    def get_mean_noise_errors(self):
+    def get_mean_noise_errors(self, args=None):
         """
         Returns the mean values for:
         1. Probability of measuring 0 when preparing 1 (readout error)
@@ -76,17 +76,33 @@ class Backend(ABC):
         # Getting backend properties
         if self._backend is None:
             raise RuntimeError("Backend is not initialized.")
-        if not hasattr(self._backend, 'properties') or self._backend.properties is None:
-            raise RuntimeError("Backend does not provide properties for noise analysis.")
-        properties = self._backend.properties()
-        if properties is None:
+        # If properties are not available, check for AerSimulator custom/zero noise
+        if not hasattr(self._backend, 'properties') or self._backend.properties is None or self._backend.properties() is None:
+            if args is not None and hasattr(args, 'backend_type') and args.backend_type == 'aer_simulator':
+                if hasattr(args, 'noise_model') and args.noise_model == 'custom':
+                    # Use custom noise parameters from args
+                    return {
+                        'prob_meas0_prep1': getattr(args, 'prob_meas0_prep1', 0.0),
+                        'prob_meas1_prep0': getattr(args, 'prob_meas1_prep0', 0.0),
+                        'error_prob_1qubit_gate': getattr(args, 'error_prob_1qubit_gate', 0.0),
+                        'error_prob_2qubit_gate': getattr(args, 'error_prob_2qubit_gate', 0.0)
+                    }
+                else:
+                    # Zero noise: return all zeros
+                    return {
+                        'prob_meas0_prep1': 0.0,
+                        'prob_meas1_prep0': 0.0,
+                        'error_prob_1qubit_gate': 0.0,
+                        'error_prob_2qubit_gate': 0.0
+                    }
+            # If not AerSimulator or not custom/zero, fallback to zeros
             return {
-                'readout_error': 0,
-                'error_prob_1qubit_gate': 0,
-                'error_prob_2qubit_gate': 0
+                'prob_meas0_prep1': 0.0,
+                'prob_meas1_prep0': 0.0,
+                'error_prob_1qubit_gate': 0.0,
+                'error_prob_2qubit_gate': 0.0
             }
-
-        # Getting backend configuration
+        properties = self._backend.properties()
         config = self._backend.configuration() if hasattr(self._backend, 'configuration') else None
         if config is None:
             raise RuntimeError("Backend does not provide configuration().")
@@ -125,7 +141,8 @@ class Backend(ABC):
         mean_error_2q = np.mean(twoq_gate_errors) if twoq_gate_errors else 0.0
 
         return {
-            'readout_error': mean_readout_error,
+            'prob_meas0_prep1': mean_readout_error,
+            'prob_meas1_prep0': mean_readout_error,
             'error_prob_1qubit_gate': mean_error_1q,
             'error_prob_2qubit_gate': mean_error_2q
         }
@@ -310,7 +327,9 @@ def create_backend(backend_type="aer_simulator", arguments=None):
     if backend_type == "qpu":
         return QPUBackend(arguments)
     elif backend_type == "fake_backend":
-        return FakeBackend(arguments)
+        # Pass a default seed if arguments is None or not an int
+        seed = getattr(arguments, 'seed_simulator', 42) if arguments is not None else 42
+        return FakeBackend(seed)
     elif backend_type == "aer_simulator":
         return AerSimulatorBackend(arguments)
     else:

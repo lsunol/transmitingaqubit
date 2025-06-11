@@ -259,7 +259,7 @@ class QuantumResultsProcessor:
             print(f"  Results length: {len(experimental_results)}")
             
             # Recreate state and POVM for KL divergence calculation
-            state = create_state_from_args(job_data['state'], None)
+            state = create_state_from_args(job_data['state'], job_data.get('custom_state', None))
             povm = create_povm(job_data['povm'])
             
             # Calculate KL divergence
@@ -333,6 +333,12 @@ class QuantumResultsProcessor:
             updated_job_data = self._create_updated_job_data(
                 job_data, counts, experiment_results_path, povm_labels, kl_divergence_path
             )
+
+            # Add the last KL divergence value to the CSV
+            if kl_analysis:
+                last_kl_value = kl_analysis[-1]['kl_divergence']
+                updated_job_data['final_kl_divergence'] = last_kl_value
+                print(f"  ✓ Final KL divergence value: {last_kl_value}")
             
             # Add reconstructed state info to CSV
             if reconstructed_state_theta is not None and reconstructed_state_phi is not None:

@@ -696,6 +696,39 @@ class TRINEPOVM(POVM):
         return {'00': 'TRINE0', '01': 'TRINE1', '10': 'TRINE2'}
 
 
+class PVMPOVM(POVM):
+    """
+    Projective measurement (PVM) in the computational basis (|0⟩, |1⟩).
+    """
+    def __init__(self):
+        super().__init__(label="PVM POVM")
+        # Computational basis vectors
+        self.psi_list = [
+            np.array([[1], [0]]),  # |0⟩
+            np.array([[0], [1]])   # |1⟩
+        ]
+        self.vectors = self.psi_list
+
+    def create_circuit(self):
+        """Create a quantum circuit for PVM measurement (computational basis)."""
+        return QuantumCircuit(1, 1)
+
+    def prepare_measurement(self, qc):
+        """Apply computational basis measurement to the circuit."""
+        qc.measure(0, 0)
+        outcome_labels = ['0', '1']
+        return qc, outcome_labels
+
+    def get_operators(self):
+        """Return the theoretical PVM operators (projectors onto |0⟩ and |1⟩)."""
+        M0 = np.array([[1, 0], [0, 0]])
+        M1 = np.array([[0, 0], [0, 1]])
+        return [M0, M1]
+
+    def get_outcome_label_map(self):
+        return {'0': '0', '1': '1'}
+
+
 def create_povm(povm_type='bb84', **kwargs):
     """
     Factory method to create different types of POVMs.
@@ -724,6 +757,8 @@ def create_povm(povm_type='bb84', **kwargs):
         return MUBPOVM(**kwargs)
     elif povm_type == "trine":
         return TRINEPOVM(**kwargs)
+    elif povm_type == "pvm":
+        return PVMPOVM(**kwargs)
     else:
-        valid_types = ["bb84", "sic", "mub", "trine"]
+        valid_types = ["bb84", "sic", "mub", "trine", "pvm"]
         raise ValueError(f"Invalid POVM type '{povm_type}'. Must be one of {valid_types}")
