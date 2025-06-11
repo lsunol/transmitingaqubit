@@ -623,25 +623,26 @@ class MUBPOVM(POVM):
 
     def postprocess_results(self, experimental_results, counts=None):
         """
-        For MUBPOVM: Convert list or dict of 3-bit results (e.g., '010') into flat counts for '0z', '1z', '0x', '1x', '0y', '1y'.
+        For MUBPOVM: Convert list or dict of 3-bit results (e.g., '010') into flat POVM outcome list and counts.
         Args:
             experimental_results (list or dict): List of bitstrings or dict of bitstring->count
             counts (dict, optional): Raw counts from experiment
         Returns:
-            tuple: (processed_results, processed_counts)
+            tuple: (results, counts) where results is a flat list like ['0z', '1z', '0x', ...]
         """
-        # Always regenerate both processed_results (list) and processed_counts (dict)
+        # Always regenerate both results (list) and counts (dict)
 
         bitstring_list = list(experimental_results)
-        # Aggregate counts for each basis outcome
+        # Aggregate counts for each basis outcome and build flat results list
+        results = []
         processed_counts = {'0z': 0, '1z': 0, '0x': 0, '1x': 0, '0y': 0, '1y': 0}
         for bitstr in bitstring_list:
             y, x, z = bitstr
-            processed_counts[f'{z}z'] += 1
-            processed_counts[f'{x}x'] += 1
-            processed_counts[f'{y}y'] += 1
-        # The processed_results is the expanded list of bitstrings (for KL, etc.)
-        return bitstring_list, processed_counts
+            for label, bit in zip(['z', 'x', 'y'], [z, x, y]):
+                povm_outcome = f'{bit}{label}'
+                results.append(povm_outcome)
+                processed_counts[povm_outcome] += 1
+        return results, processed_counts
 
     def get_label(self):
         return self.label
