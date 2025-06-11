@@ -288,6 +288,18 @@ class POVM(ABC):
         """Return the label of the POVM."""
         return self.label
 
+    def postprocess_results(self, experimental_results, counts=None):
+        """
+        Optional post-processing for experimental results and counts.
+        By default, returns the input unchanged.
+        Args:
+            experimental_results (list or dict): Raw results from experiment (bitstrings or counts)
+            counts (dict, optional): Raw counts from experiment
+        Returns:
+            tuple: (processed_results, processed_counts)
+        """
+        return experimental_results, counts
+
     def reconstruct_original_state(self, experimental_distribution, output_dir):
         """
         Generic state reconstruction from experimental distribution using this POVM (qubit case).
@@ -505,7 +517,6 @@ class SICPOVM(POVM):
         # SIC: outcome '00', '01', '10', '11' map to SIC0, SIC1, SIC2, SIC3
         return {'00': 'SIC0', '01': 'SIC1', '10': 'SIC2', '11': 'SIC3'}    
     
-    
     def reconstruct_original_state(self, experimental_distribution, output_dir):
         """
         Reconstruct the original quantum state from the experimental SIC-POVM distribution.
@@ -548,82 +559,90 @@ class MUBPOVM(POVM):
     """
     Mutually Unbiased Bases (MUB) POVM implementation.
     
-    This POVM measures in one of the three mutually unbiased bases
-    for a qubit: Z, X, or Y.
+    This POVM measures in all three mutually unbiased bases
+    for a qubit: Z, X, and Y, using three qubits in parallel.
     """
     
-    def __init__(self, basis='random'):
+    def __init__(self):
         """
-        Initialize a MUB POVM.
-        
-        Args:
-            basis (str): Basis choice ('z', 'x', 'y', or 'random'). Default is 'random'.
+        Initialize a MUB POVM (parallel measurement in all three bases).
         """
-        super().__init__(label="MUB POVM")
-        self.basis_options = ['z', 'x', 'y']
-        if basis == 'random':
-            self.basis = np.random.choice(self.basis_options)
-        elif basis in self.basis_options:
-            self.basis = basis
-        else:
-            raise ValueError(f"Basis must be one of {self.basis_options} or 'random'")
-    
+        super().__init__(label="MUB POVM (parallel)")
+
     def create_circuit(self):
-        """Create a quantum circuit for MUB POVM measurement."""
-        # MUB POVM requires 1 qubit and 1 classical bit
-        return QuantumCircuit(1, 1)
+        """Create a quantum circuit for MUB POVM measurement (3 qubits, 3 bits)."""
+        # 3 qubits, 3 classical bits
+        return QuantumCircuit(3, 3)
 
     def prepare_measurement(self, qc):
-        """Apply MUB POVM measurement to the circuit."""
-        if self.basis == 'x':
-            # Measure in X basis by applying H before measurement
-            qc.h(0)
-        elif self.basis == 'y':
-            # Measure in Y basis by applying S† and H before measurement
-            qc.sdg(0)
-            qc.h(0)
-        
-        # Add measurement
-        qc.measure(0, 0)
-        
-        # Return the circuit and outcome labels
-        if self.basis == 'z':
-            outcome_labels = ['0', '1']
-        elif self.basis == 'x':
-            outcome_labels = ['+', '-']
-        else:  # Y basis
-            outcome_labels = ['+i', '-i']
-            
+        """Apply MUB POVM measurement to the circuit (all three bases in parallel)."""
+        # Qubit 0: Z basis (no rotation)
+        # Qubit 1: X basis (H)
+        qc.h(1)
+        # Qubit 2: Y basis (S† then H)
+        qc.sdg(2)
+        qc.h(2)
+        # Measure all three qubits into their respective classical bits
+        qc.measure(0, 0)  # Z
+        qc.measure(1, 1)  # X
+        qc.measure(2, 2)  # Y
+        # Outcome labels for each basis
+        outcome_labels = [
+            ['0', '1'],    # Z
+            ['+', '-'],    # X
+            ['+i', '-i']   # Y
+        ]
         return qc, outcome_labels
-    
+
     def get_operators(self):
-        """Return the theoretical MUB POVM operators."""
-        # Define the POVM operators based on the basis
-        if self.basis == 'z':
-            # Computational basis
-            M0 = np.array([[1, 0], [0, 0]])
-            M1 = np.array([[0, 0], [0, 1]])
-            return [M0, M1]
-        elif self.basis == 'x':
-            # Diagonal basis
-            M_plus = np.array([[0.5, 0.5], [0.5, 0.5]])
-            M_minus = np.array([[0.5, -0.5], [-0.5, 0.5]])
-            return [M_plus, M_minus]
-        else:  # Y basis
-            # Circular basis
-            M_plus_i = np.array([[0.5, -0.5j], [0.5j, 0.5]])
-            M_minus_i = np.array([[0.5, 0.5j], [-0.5j, 0.5]])
-            return [M_plus_i, M_minus_i]
+        """Return the theoretical MUB POVM operators as a flat list: [M0_z, M1_z, M0_x, M1_x, M0_y, M1_y]."""
+        z_ops = [
+            np.array([[1, 0], [0, 0]]),
+            np.array([[0, 0], [0, 1]])
+        ]
+        x_ops = [
+            np.array([[0.5, 0.5], [0.5, 0.5]]),
+            np.array([[0.5, -0.5], [-0.5, 0.5]])
+        ]
+        y_ops = [
+            np.array([[0.5, -0.5j], [0.5j, 0.5]]),
+            np.array([[0.5, 0.5j], [-0.5j, 0.5]])
+        ]
+        return z_ops + x_ops + y_ops
 
     def get_outcome_label_map(self):
-        # MUB: outcome '0'/'1' for Z, '+'/'-' for X, '+i'/'-i' for Y
-        if self.basis == 'z':
-            return {'0': '0', '1': '1'}
-        elif self.basis == 'x':
-            return {'0': '+', '1': '-'}
-        else:
-            return {'0': '+i', '1': '-i'}
+        # Flat mapping for all 6 outcomes, order matches get_operators
+        return {
+            '0z': '0', '1z': '1',
+            '0x': '+', '1x': '-',
+            '0y': '+i', '1y': '-i'
+        }
 
+    def postprocess_results(self, experimental_results, counts=None):
+        """
+        For MUBPOVM: Convert list or dict of 3-bit results (e.g., '010') into flat counts for '0z', '1z', '0x', '1x', '0y', '1y'.
+        Args:
+            experimental_results (list or dict): List of bitstrings or dict of bitstring->count
+            counts (dict, optional): Raw counts from experiment
+        Returns:
+            tuple: (processed_results, processed_counts)
+        """
+        # Always regenerate both processed_results (list) and processed_counts (dict)
+
+        bitstring_list = list(experimental_results)
+        # Aggregate counts for each basis outcome
+        processed_counts = {'0z': 0, '1z': 0, '0x': 0, '1x': 0, '0y': 0, '1y': 0}
+        for bitstr in bitstring_list:
+            y, x, z = bitstr
+            processed_counts[f'{z}z'] += 1
+            processed_counts[f'{x}x'] += 1
+            processed_counts[f'{y}y'] += 1
+        # The processed_results is the expanded list of bitstrings (for KL, etc.)
+        return bitstring_list, processed_counts
+
+    def get_label(self):
+        return self.label
+    
 
 class TRINEPOVM(POVM):
     """

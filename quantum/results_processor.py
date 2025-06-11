@@ -248,19 +248,22 @@ class QuantumResultsProcessor:
         """
         import json
         try:
+            # Recreate state and POVM for KL divergence calculation
+            state = create_state_from_args(job_data['state'], job_data.get('custom_state', None))
+            povm = create_povm(job_data['povm'])
+            
             job_id = job.job_id()
             print(f"Processing completed job {job_id}...")
             
             # Extract job results
             counts = self._get_job_counts(job)
             experimental_results = self._get_job_results(job)
+
+            # Post-process experimental distribution if needed (e.g., for MUBPOVM)
+            experimental_results, counts = povm.postprocess_results(experimental_results, counts)
             
             print(f"  Counts: {counts}")
             print(f"  Results length: {len(experimental_results)}")
-            
-            # Recreate state and POVM for KL divergence calculation
-            state = create_state_from_args(job_data['state'], job_data.get('custom_state', None))
-            povm = create_povm(job_data['povm'])
             
             # Calculate KL divergence
             kl_analysis = povm.calculate_kl_divergence(experimental_results, state)
