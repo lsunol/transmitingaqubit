@@ -24,19 +24,31 @@ class State(ABC):
         """Initialize state with an optional label."""
         self.label = label
         
-    @abstractmethod
-    def prepare(self, qc, qubit=0):
+    def prepare(self, qc, qubits: list[int] = [0]):
         """
         Prepare the state on the given quantum circuit.
+        If qubits is a list or tuple, prepare the state on all specified qubits.
         
         Args:
             qc (QuantumCircuit): The quantum circuit to prepare the state on.
-            qubit (int, optional): The qubit index to prepare the state on. Defaults to 0.
+            qubits (int or list/tuple of int, optional): The qubit index or indices to prepare the state on. Defaults to 0.
         
         Returns:
             QuantumCircuit: The modified quantum circuit.
         """
-        pass
+        if isinstance(qubits, (list, tuple)):
+            for q in qubits:
+                self._prepare_single(qc, q)
+            return qc
+        else:
+            return self._prepare_single(qc, qubits)
+
+    @abstractmethod
+    def _prepare_single(self, qc, qubit):
+        """
+        Prepare the state on a single qubit. To be implemented by subclasses.
+        """
+        raise NotImplementedError("Subclasses must implement _prepare_single.")
     
     @abstractmethod
     def get_statevector(self):
@@ -109,7 +121,7 @@ class Zero(State):
     def __init__(self):
         super().__init__(label="|0⟩")
     
-    def prepare(self, qc, qubit=0):
+    def _prepare_single(self, qc, qubit=0):
         # |0⟩ is the default state, so no operations needed
         return qc
     
@@ -126,7 +138,7 @@ class One(State):
     def __init__(self):
         super().__init__(label="|1⟩")
     
-    def prepare(self, qc, qubit=0):
+    def _prepare_single(self, qc, qubit=0):
         qc.x(qubit)
         return qc
     
@@ -143,7 +155,7 @@ class Plus(State):
     def __init__(self):
         super().__init__(label="|+⟩")
     
-    def prepare(self, qc, qubit=0):
+    def _prepare_single(self, qc, qubit=0):
         qc.h(qubit)
         return qc
     
@@ -160,7 +172,7 @@ class Minus(State):
     def __init__(self):
         super().__init__(label="|-⟩")
     
-    def prepare(self, qc, qubit=0):
+    def _prepare_single(self, qc, qubit=0):
         qc.x(qubit)
         qc.h(qubit)
         return qc
@@ -178,7 +190,7 @@ class PlusI(State):
     def __init__(self):
         super().__init__(label="|i⟩")
     
-    def prepare(self, qc, qubit=0):
+    def _prepare_single(self, qc, qubit=0):
         qc.h(qubit)
         qc.s(qubit)  # S gate applies a π/2 phase to |1⟩ component
         return qc
@@ -196,7 +208,7 @@ class MinusI(State):
     def __init__(self):
         super().__init__(label="|-i⟩")
     
-    def prepare(self, qc, qubit=0):
+    def _prepare_single(self, qc, qubit=0):
         qc.h(qubit)
         qc.sdg(qubit)  # S† gate applies a -π/2 phase to |1⟩ component
         return qc
@@ -233,7 +245,7 @@ class Custom(State):
         self.theta = theta
         self.phi = phi
     
-    def prepare(self, qc, qubit=0):
+    def _prepare_single(self, qc, qubit=0):
         # U3 gate applies the most general single-qubit unitary
         # U3(theta, phi, lambda) where lambda=0 for our case
         qc.u(self.theta, self.phi, 0, qubit)
@@ -288,7 +300,7 @@ class CustomStatevector(State):
         else:
             self.phi = np.angle(self.beta / abs(self.beta))
     
-    def prepare(self, qc, qubit=0):
+    def _prepare_single(self, qc, qubit=0):
         # U3 gate applies the most general single-qubit unitary
         qc.u(self.theta, self.phi, 0, qubit)
         return qc

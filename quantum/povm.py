@@ -393,9 +393,10 @@ class BB84POVM(POVM):
             raise ValueError(f"Basis must be one of {self.basis_options} or 'random'")
     
     def create_circuit(self):
-        """Create a quantum circuit for BB84 POVM measurement."""
-        # BB84 POVM requires 1 qubit and 1 classical bit
-        return QuantumCircuit(1, 1)
+        """Create a quantum circuit for BB84 POVM measurement. Returns (qc, prep_qubits)."""
+        qc = QuantumCircuit(1, 1)
+        prep_qubits = [0]
+        return qc, prep_qubits
     
     def prepare_measurement(self, qc):
         """Apply BB84 POVM measurement to the circuit."""
@@ -455,9 +456,10 @@ class SICPOVM(POVM):
         self.vectors = self.psi_list
 
     def create_circuit(self):
-        """Create a quantum circuit for SIC POVM measurement."""
-        # SIC POVM requires 3 qubits (1 main + 2 ancillas) and 2 classical bits
-        return QuantumCircuit(3, 2)
+        """Create a quantum circuit for SIC POVM measurement. Returns (qc, prep_qubits)."""
+        qc = QuantumCircuit(3, 2)
+        prep_qubits = [0]
+        return qc, prep_qubits
     
     def prepare_measurement(self, qc):
         """Apply SIC POVM measurement to the circuit."""
@@ -571,8 +573,9 @@ class MUBPOVM(POVM):
 
     def create_circuit(self):
         """Create a quantum circuit for MUB POVM measurement (3 qubits, 3 bits)."""
-        # 3 qubits, 3 classical bits
-        return QuantumCircuit(3, 3)
+        qc = QuantumCircuit(3, 3)
+        prep_qubits = [0, 1, 2]
+        return qc, prep_qubits
 
     def prepare_measurement(self, qc):
         """Apply MUB POVM measurement to the circuit (all three bases in parallel)."""
@@ -660,9 +663,10 @@ class TRINEPOVM(POVM):
         self.vectors = self.psi_list
 
     def create_circuit(self):
-        """Create a quantum circuit for TRINE POVM measurement."""
-        # Use 2 qubits (1 main + 1 ancilla) and 1 classical bit
-        return QuantumCircuit(2, 2)
+        """Create a quantum circuit for TRINE POVM measurement. Returns (qc, prep_qubits)."""
+        qc = QuantumCircuit(2, 2)
+        prep_qubits = [0]
+        return qc, prep_qubits
 
     def prepare_measurement(self, qc):
         """Apply TRINE POVM measurement to the circuit using an explicit Naimark dilation unitary."""
@@ -729,8 +733,10 @@ class PVMPOVM(POVM):
         self.vectors = self.psi_list
 
     def create_circuit(self):
-        """Create a quantum circuit for PVM measurement (computational basis)."""
-        return QuantumCircuit(1, 1)
+        """Create a quantum circuit for PVM measurement (computational basis). Returns (qc, prep_qubits)."""
+        qc = QuantumCircuit(1, 1)
+        prep_qubits = [0]
+        return qc, prep_qubits
 
     def prepare_measurement(self, qc):
         """Apply computational basis measurement to the circuit."""

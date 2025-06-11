@@ -152,9 +152,9 @@ def main():
     backend = create_backend(args.backend_type, args)
 
     # Create the quantum circuit
-    qc = povm.create_circuit()
+    qc, prep_qubits = povm.create_circuit()
 
-    state.prepare(qc)
+    state.prepare(qc, prep_qubits)
     print(f"Prepared state: {state.label}")
 
     # Add POVM measurement
@@ -179,6 +179,7 @@ def main():
         'noise_model': getattr(args, 'noise_model', None),
         'shots': args.shots,
         'state': args.state,
+        'custom_state': args.custom_state if args.state == 'custom' else None,
         'povm': args.povm,
         'povm_labels': str(list(povm.get_outcome_label_map().values())),
         **backend.get_mean_noise_errors(args)    
