@@ -43,7 +43,7 @@ def parse_arguments():
     
     # POVM selection
     povm_group = parser.add_argument_group('Measurement Options')
-    povm_choices = ['bb84', 'sic', 'mub', 'trine', 'random']
+    povm_choices = ['bb84', 'sic', 'mub', 'trine', 'pvm', 'random']
     povm_group.add_argument('--povm', type=str, choices=povm_choices, required=True, help='POVM type for measurement')
     povm_group.add_argument('--shots', type=int, default=1024, help='Number of shots for the experiment')
     
@@ -169,16 +169,19 @@ def main():
     print(f"Job ID: {job.job_id()}")
     
     # Step 1: Add experiment to master CSV and create subfolder
+    # Always include custom noise parameters for reproducibility
+    backend_obj = backend.get_backend()
+    backend_name = getattr(backend_obj, 'name', str(backend_obj)) if backend_obj is not None else str(backend)
     initial_job_data = {
         'job_id': job.job_id(),
         'backend_type': args.backend_type,
-        'backend_name': backend.get_backend().name,
+        'backend_name': backend_name,
         'noise_model': getattr(args, 'noise_model', None),
         'shots': args.shots,
         'state': args.state,
         'povm': args.povm,
         'povm_labels': str(list(povm.get_outcome_label_map().values())),
-        **backend.get_mean_noise_errors()    
+        **backend.get_mean_noise_errors(args)    
     }
     # Setup experiment: create folder and CSV manager in one call
     csv_manager, experiment_folder = ExperimentCSVManager.setup_experiment(
@@ -201,14 +204,8 @@ def main():
         # Process results immediately using centralized processor
         print("Processing results immediately...")
         
-        # Create job data for processor (similar to CSV row format)
-        job_data_for_processor = {
-            'job_id': job.job_id(),
-            'state': args.state,
-            'povm': args.povm
-        }
-        
-        success = results_processor.process_job_results(job, job_data_for_processor)
+        # Pass the full initial_job_data to preserve all parameters
+        success = results_processor.process_job_results(job, initial_job_data)
         
         if success:
             print(f"Experiment completed. Results saved to master CSV.")

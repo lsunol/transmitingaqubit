@@ -144,6 +144,10 @@
                       <tr><th>Shots</th><td>${selectedExp.shots}</td></tr>
                       <tr><th>State</th><td>${selectedExp.state}</td></tr>
                       <tr><th>POVM</th><td>${selectedExp.povm}</td></tr>
+                      <tr><th>Readout Error</th><td>${selectedExp.readout_error}</td></tr>
+                      <tr><th>1-Qubit Gate Error Prob.</th><td>${selectedExp.error_prob_1qubit_gate}</td></tr>
+                      <tr><th>2-Qubit Gate Error Prob.</th><td>${selectedExp.error_prob_2qubit_gate}</td></tr>
+                      <tr><th>Final KL Divergence</th><td>${selectedExp.final_kl_divergence ?? ''}</td></tr>
                     </table>`;
                 }
                 const images = await fetchImages(folder, outputPrefix);
