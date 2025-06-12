@@ -311,6 +311,7 @@ class QuantumResultsProcessor:
             reconstructed_state_theta = None
             reconstructed_state_phi = None
             reconstructed_state_image_file = None
+            reconstructed_state_fidelity = None
             if hasattr(povm, 'reconstruct_original_state'):
                 try:
                     reconstructed_state, image_path = povm.reconstruct_original_state(counts, output_dir)
@@ -329,6 +330,9 @@ class QuantumResultsProcessor:
                         # Check for antipodal (opposite) direction
                         if abs(d_theta - 180) < 1e-2:
                             print("  [Diagnostic] Reconstructed state is antipodal (opposite direction) to expected state.")
+                    # --- Calculate state fidelity ---
+                    reconstructed_state_fidelity = self.calculate_state_fidelity(state, reconstructed_state)
+                    print(f"  ✓ State fidelity (original vs reconstructed): {reconstructed_state_fidelity}")
                 except Exception as e:
                     print(f"  ✗ State reconstruction failed: {e}")
             
@@ -349,6 +353,9 @@ class QuantumResultsProcessor:
                 updated_job_data['reconstructed_state_phi'] = reconstructed_state_phi
             if reconstructed_state_image_file is not None:
                 updated_job_data['reconstructed_state_image_file'] = reconstructed_state_image_file
+            # Add state fidelity to CSV
+            if reconstructed_state_fidelity is not None:
+                updated_job_data['reconstructed_state_fidelity'] = reconstructed_state_fidelity
             
             # Update CSV with results
             self.csv_manager.update_experiments_with_results([updated_job_data])
@@ -428,3 +435,24 @@ class QuantumResultsProcessor:
         updated_data.pop('kl_divergence_value', None)
         updated_data.pop('kl_divergence_shots', None)
         return updated_data
+    
+    def calculate_state_fidelity(self, original_state, reconstructed_state):
+        """
+        Calculate the quantum state fidelity between the original and reconstructed state.
+        Uses Qiskit's state_fidelity function for generality (works for pure and mixed states).
+        Args:
+            original_state: State object (must have get_statevector() or get_density_matrix())
+            reconstructed_state: State object (must have get_statevector() or get_density_matrix())
+        Returns:
+            float: Fidelity value in [0, 1]
+        """
+        from qiskit.quantum_info import state_fidelity
+        # Try to get density matrices (works for both pure and mixed states)
+        try:
+            rho1 = original_state.get_density_matrix()
+            rho2 = reconstructed_state.get_density_matrix()
+        except Exception:
+            # Fallback to statevector if density matrix is not available
+            rho1 = original_state.get_statevector()
+            rho2 = reconstructed_state.get_statevector()
+        return state_fidelity(rho1, rho2)
